@@ -253,8 +253,21 @@ RunService.RenderStepped:Connect(function()
         local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
         local be  = LocalPlayer.Character:FindFirstChild("BodyEffects")
         local ko  = be and be:FindFirstChild("K.O")
-        if hum and ko and ko.Value then hum.Health = 0 end
-        if hum and hum.Health <= 1 then hum.Health = 0 end
+        if hum and ko and ko.Value then
+            -- Save position before killing if RespawnAtDeath is on
+            if respawnEnabled then
+                local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then lastDeathPos = hrp.CFrame end
+            end
+            hum.Health = 0
+        end
+        if hum and hum.Health <= 1 then
+            if respawnEnabled then
+                local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then lastDeathPos = hrp.CFrame end
+            end
+            hum.Health = 0
+        end
     end
 
     if MiscSettings.AntiSlowEnabled and LocalPlayer.Character then
@@ -1706,7 +1719,10 @@ getgenv().crosshair = {
 }
 local crosshair_last_render = 0
 local crosshair_drawings = {lines={}}
-for i = 1, 8 do crosshair_drawings.lines[i] = Drawing.new('Line') end
+-- Apenas 4 linhas coloridas, sem outline preto
+for i = 1, 4 do
+    crosshair_drawings.lines[i] = Drawing.new('Line')
+end
 local function crosshair_solve(angle, radius)
     return Vector2.new(math.sin(math.rad(angle))*radius, math.cos(math.rad(angle))*radius)
 end
@@ -1718,9 +1734,8 @@ RunService.PostSimulation:Connect(function()
     local position = ch.mode=='center' and Camera.ViewportSize/2 or UserInputService:GetMouseLocation()
     if ch.enabled then
         for idx = 1, 4 do
-            local ol = crosshair_drawings.lines[idx]
-            local il = crosshair_drawings.lines[idx+4]
-            local angle  = (idx-1)*90
+            local line = crosshair_drawings.lines[idx]
+            local angle = (idx-1)*90
             local length = ch.length
             if ch.spin then
                 local sa = -_tick*ch.spin_speed % ch.spin_max
@@ -1730,17 +1745,14 @@ RunService.PostSimulation:Connect(function()
                 local rl = _tick*ch.resize_speed % 180
                 length = ch.resize_min + math.sin(math.rad(rl))*ch.resize_max
             end
-            il.Visible=true il.Color=ch.color
-            il.From=position+crosshair_solve(angle,ch.radius)
-            il.To  =position+crosshair_solve(angle,ch.radius+length)
-            il.Thickness=ch.width
-            ol.Visible=true ol.Color=Color3.fromRGB(0,0,0)
-            ol.From=position+crosshair_solve(angle,ch.radius-1)
-            ol.To  =position+crosshair_solve(angle,ch.radius+length+1)
-            ol.Thickness=ch.width+1.5
+            line.Visible=true
+            line.Color=ch.color
+            line.From=position+crosshair_solve(angle,ch.radius)
+            line.To  =position+crosshair_solve(angle,ch.radius+length)
+            line.Thickness=ch.width
         end
     else
-        for i = 1, 8 do crosshair_drawings.lines[i].Visible=false end
+        for i = 1, 4 do crosshair_drawings.lines[i].Visible=false end
     end
 end)
 local CrosshairGroup = Tabs.World:AddRightGroupbox('Crosshair')
@@ -1970,18 +1982,31 @@ end
 
 local respawnEnabled = false
 local lastDeathPos   = nil
+
+local function saveDeathPos(char)
+    if not respawnEnabled then return end
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if hrp then lastDeathPos = hrp.CFrame end
+end
+
 local function watchKO(char)
     local be = char:WaitForChild("BodyEffects", 5)
     if not be then return end
     local ko = be:WaitForChild("K.O", 5)
     if not ko then return end
+
     ko:GetPropertyChangedSignal("Value"):Connect(function()
-        if ko.Value and respawnEnabled then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp then lastDeathPos = hrp.CFrame end
-        end
+        if ko.Value then saveDeathPos(char) end
     end)
+
+    local hum = char:FindFirstChild("Humanoid")
+    if hum then
+        hum:GetPropertyChangedSignal("Health"):Connect(function()
+            if hum.Health <= 0 then saveDeathPos(char) end
+        end)
+    end
 end
+
 if LocalPlayer.Character then task.spawn(function() watchKO(LocalPlayer.Character) end) end
 LocalPlayer.CharacterAdded:Connect(function(char)
     task.spawn(function() watchKO(char) end)
@@ -2311,9 +2336,10 @@ local playerGui = LocalPlayer:WaitForChild("PlayerGui")
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name="RagebotStatusGui" screenGui.ResetOnSpawn=false screenGui.Parent=playerGui
 local messageLabel = Instance.new("TextLabel")
-messageLabel.BackgroundTransparency=1 messageLabel.Size=UDim2.new(0,200,0,30)
-messageLabel.Position=UDim2.new(0.5,-100,0.5,0) messageLabel.AnchorPoint=Vector2.new(0.5,0.5)
+messageLabel.BackgroundTransparency=1 messageLabel.Size=UDim2.new(1,0,0,30)
+messageLabel.Position=UDim2.new(0,0,0.5,0) messageLabel.AnchorPoint=Vector2.new(0,0.5)
 messageLabel.Font=2 messageLabel.TextSize=13
+messageLabel.TextXAlignment=Enum.TextXAlignment.Center
 messageLabel.TextColor3=Color3.fromRGB(255,255,255) messageLabel.TextStrokeColor3=Color3.fromRGB(0,0,0)
 messageLabel.TextStrokeTransparency=0 messageLabel.Text="" messageLabel.Parent=screenGui
 
@@ -2416,11 +2442,15 @@ task.spawn(function()
         local tDead = tBE and tBE:FindFirstChild("SDeath") and tBE["SDeath"].Value
         local tKO   = tBE and tBE:FindFirstChild("K.O")    and tBE["K.O"].Value
 
+        
+        local tFF   = tChar and tChar:FindFirstChildOfClass("ForceField")
+
         local shouldFire = ragebotactive
             and flamethrower_hack
             and lockedTarget
             and char and bp
             and not tDead
+            and not tFF
             and not (tKO and ragebotstompactive)
 
         if shouldFire then
@@ -2477,9 +2507,6 @@ task.spawn(function()
     end
 end)
 
--- ✅ STOMP CORRIGIDO: múltiplos offsets + canrun para evitar dessync
-
-
 RunService.Heartbeat:Connect(function(dt)
     if not ragebotactive then
         messageLabel.Text=""
@@ -2520,7 +2547,7 @@ RunService.Heartbeat:Connect(function(dt)
                     local hum = candidate.Character:FindFirstChild("Humanoid")
                     local ff  = candidate.Character:FindFirstChildOfClass("ForceField")
                     local gra = candidate.Character:FindFirstChild("GRABBING_CONSTRAINT")
-                    if be and hum and hum.Health>0 and not ff and not gra then
+                    if be and hum and hum.Health>0 and not gra then
                         local sd = be:FindFirstChild("SDeath") and be["SDeath"].Value
                         if not sd then lockedTarget=candidate break end
                     end
@@ -2535,7 +2562,7 @@ RunService.Heartbeat:Connect(function(dt)
                     local be   = plr.Character:FindFirstChild("BodyEffects")
                     local ff   = plr.Character:FindFirstChildOfClass("ForceField")
                     local gra  = plr.Character:FindFirstChild("GRABBING_CONSTRAINT")
-                    if tHRP and tHum and tHum.Health>0 and be and not ff and not gra then
+                    if tHRP and tHum and tHum.Health>0 and be and not gra then
                         local isKO = be:FindFirstChild("K.O") and be["K.O"].Value
                         local sd   = be:FindFirstChild("SDeath") and be["SDeath"].Value
                         if not sd then
@@ -2558,7 +2585,7 @@ RunService.Heartbeat:Connect(function(dt)
         isInCombat=false
         voiding=true; teleporting=false
         reloadTool()
-        if not ragebotviewactive then workspace.CurrentCamera.CameraSubject=Character:FindFirstChild("Humanoid") end
+        workspace.CurrentCamera.CameraSubject=Character:FindFirstChild("Humanoid")
         return
     end
     if lockedTarget then lockedTargetUserId = lockedTarget.UserId end
@@ -2598,7 +2625,11 @@ RunService.Heartbeat:Connect(function(dt)
     if TargetFF then
         messageLabel.Text="waiting FF... (void)"
         isInCombat=false; voiding=true; teleporting=false; reloadTool()
-        if not ragebotviewactive then workspace.CurrentCamera.CameraSubject=Character:FindFirstChild("Humanoid") end
+        if ragebotviewactive then
+            workspace.CurrentCamera.CameraSubject = UpperTorso or TargetHum
+        else
+            workspace.CurrentCamera.CameraSubject = Character:FindFirstChild("Humanoid")
+        end
         return
     end
     isInCombat=true; voiding=false; teleporting=true
