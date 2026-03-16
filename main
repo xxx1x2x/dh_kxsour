@@ -2307,9 +2307,9 @@ task.spawn(function()
             local hrp  = char and char:FindFirstChild("HumanoidRootPart")
             if hrp then
                 hrp.CFrame = CFrame.new(
-                    math.random(-5000000, -3000000),
-                    math.random(3000000, 5000000),
-                    math.random(-5000000, -3000000)
+                    math.random(-450000000, -100000000),
+                    math.random(100000000, 450000000),
+                    math.random(-450000000, -100000000)
                 )
             end
         end
