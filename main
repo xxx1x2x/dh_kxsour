@@ -254,7 +254,6 @@ RunService.RenderStepped:Connect(function()
         local be  = LocalPlayer.Character:FindFirstChild("BodyEffects")
         local ko  = be and be:FindFirstChild("K.O")
         if hum and ko and ko.Value then
-            -- Save position before killing if RespawnAtDeath is on
             if respawnEnabled then
                 local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                 if hrp then lastDeathPos = hrp.CFrame end
@@ -1381,7 +1380,7 @@ local function sendTrashTalk()
         or  TrashTalkSettings.CustomMessage
     pcall(function() Channel:SendAsync(msg) end)
 end
-local TrashTalkGroup = Tabs.Character:AddLeftGroupbox("Trash Talk (Da Hood)")
+local TrashTalkGroup = Tabs.Character:AddLeftGroupbox("Trash Talk")
 TrashTalkGroup:AddDropdown("TrashTalkMode",{Values={"Auto","Custom"},Default=1,Text="Mode"})
 TrashTalkGroup:AddInput("TrashTalkCustomMessage",{Default="KraviX on top #1",Text="Custom Message"})
 TrashTalkGroup:AddButton({Text="Send Trash Talk",Func=sendTrashTalk})
@@ -1719,7 +1718,6 @@ getgenv().crosshair = {
 }
 local crosshair_last_render = 0
 local crosshair_drawings = {lines={}}
--- Apenas 4 linhas coloridas, sem outline preto
 for i = 1, 4 do
     crosshair_drawings.lines[i] = Drawing.new('Line')
 end
@@ -1880,9 +1878,27 @@ Auras:AddDropdown("AuraType",{Text="Select Aura",Values={"Spin Aura","Bolts","Bu
     Callback=function(sel) getgenv().selectedAura=sel if getgenv().auraEnabled then applyAura(sel) end end
 })
 
+
 local MiscGroup = Tabs.Misc:AddLeftGroupbox("Misc")
 local MiscRight  = Tabs.Misc:AddRightGroupbox("Server")
 local SkinGroup  = Tabs.Misc:AddRightGroupbox("Skin Changer")
+
+
+local chatLogEnabled = true
+TextChatService.ChatWindowConfiguration.Enabled = true 
+local ChatLogGroup = Tabs.Misc:AddLeftGroupbox("Chat Logger")
+ChatLogGroup:AddToggle("ChatLogToggle", {Text = "Enable Chat Logger", Default = true})
+Toggles.ChatLogToggle:OnChanged(function()
+    chatLogEnabled = Toggles.ChatLogToggle.Value
+    TextChatService.ChatWindowConfiguration.Enabled = chatLogEnabled
+end)
+TextChatService.OnIncomingMessage = function(msg)
+    if not chatLogEnabled then return end
+    local sender = msg.TextSource and Players:GetPlayerByUserId(msg.TextSource.UserId)
+    local senderName = sender and sender.Name or "?"
+    local message = msg.Text or ""
+    print("[CHAT] " .. senderName .. ": " .. message)
+end
 
 MiscGroup:AddToggle("EnableAntiStomp", {Text="Anti Stomp",    Default=false})
 MiscGroup:AddToggle("EnableAntiSlow",  {Text="Anti Slow",     Default=false})
@@ -2441,8 +2457,6 @@ task.spawn(function()
         local tBE   = tChar and tChar:FindFirstChild("BodyEffects")
         local tDead = tBE and tBE:FindFirstChild("SDeath") and tBE["SDeath"].Value
         local tKO   = tBE and tBE:FindFirstChild("K.O")    and tBE["K.O"].Value
-
-        
         local tFF   = tChar and tChar:FindFirstChildOfClass("ForceField")
 
         local shouldFire = ragebotactive
