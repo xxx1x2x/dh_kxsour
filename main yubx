@@ -15,7 +15,7 @@ local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))
 local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 
 local Window = Library:CreateWindow({
-    Title = 'KraviX Da Hood YUB-X',
+    Title = 'KraviX Da Hood',
     Center = true,
     AutoShow = true,
     TabPadding = 8,
@@ -1372,7 +1372,7 @@ local function sendTrashTalk()
         or  TrashTalkSettings.CustomMessage
     pcall(function() Channel:SendAsync(msg) end)
 end
-local TrashTalkGroup = Tabs.Character:AddLeftGroupbox("Trash Talk (Da Hood)")
+local TrashTalkGroup = Tabs.Character:AddLeftGroupbox("Trash Talk")
 TrashTalkGroup:AddDropdown("TrashTalkMode",{Values={"Auto","Custom"},Default=1,Text="Mode"})
 TrashTalkGroup:AddInput("TrashTalkCustomMessage",{Default="KraviX on top #1",Text="Custom Message"})
 TrashTalkGroup:AddButton({Text="Send Trash Talk",Func=sendTrashTalk})
@@ -1870,9 +1870,27 @@ Auras:AddDropdown("AuraType",{Text="Select Aura",Values={"Spin Aura","Bolts","Bu
     Callback=function(sel) getgenv().selectedAura=sel if getgenv().auraEnabled then applyAura(sel) end end
 })
 
+
 local MiscGroup = Tabs.Misc:AddLeftGroupbox("Misc")
 local MiscRight  = Tabs.Misc:AddRightGroupbox("Server")
 local SkinGroup  = Tabs.Misc:AddRightGroupbox("Skin Changer")
+
+
+local chatLogEnabled = true
+TextChatService.ChatWindowConfiguration.Enabled = true 
+local ChatLogGroup = Tabs.Misc:AddLeftGroupbox("Chat Logger")
+ChatLogGroup:AddToggle("ChatLogToggle", {Text = "Enable Chat Logger", Default = true})
+Toggles.ChatLogToggle:OnChanged(function()
+    chatLogEnabled = Toggles.ChatLogToggle.Value
+    TextChatService.ChatWindowConfiguration.Enabled = chatLogEnabled
+end)
+TextChatService.OnIncomingMessage = function(msg)
+    if not chatLogEnabled then return end
+    local sender = msg.TextSource and Players:GetPlayerByUserId(msg.TextSource.UserId)
+    local senderName = sender and sender.Name or "?"
+    local message = msg.Text or ""
+    print("[CHAT] " .. senderName .. ": " .. message)
+end
 
 MiscGroup:AddToggle("EnableAntiStomp", {Text="Anti Stomp",    Default=false})
 MiscGroup:AddToggle("EnableAntiSlow",  {Text="Anti Slow",     Default=false})
@@ -1984,11 +2002,9 @@ local function watchKO(char)
     if not be then return end
     local ko = be:WaitForChild("K.O", 5)
     if not ko then return end
-
     ko:GetPropertyChangedSignal("Value"):Connect(function()
         if ko.Value then saveDeathPos(char) end
     end)
-
     local hum = char:FindFirstChild("Humanoid")
     if hum then
         hum:GetPropertyChangedSignal("Health"):Connect(function()
@@ -2104,10 +2120,7 @@ local inferno= {["[SilencerAR]"]="rbxassetid://9401972413",["[AR]"]="rbxassetid:
 SkinGroup:AddButton({Text="Galaxy Skin",  Func=function() applySkin(galaxy)  end})
 SkinGroup:AddButton({Text="Inferno Skin", Func=function() applySkin(inferno) end})
 
--- ============================================================
--- RAGEBOT SECTION - variaveis movidas para _G para evitar
--- "Out of local registers exceeded limit 200"
--- ============================================================
+
 local ragebottargets = {}
 local lockedTarget   = nil
 local ragebotactive  = false
@@ -2123,7 +2136,6 @@ local killCount = 0
 local deathCount = 0
 local lastKilledTarget = nil
 
--- Variaveis de estado movidas para _G
 _G.rb_currentTargetIndex = 1
 _G.rb_shouldSwitch       = false
 _G.rb_orbitAngle         = 0
@@ -2299,9 +2311,9 @@ task.spawn(function()
             local hrp  = char and char:FindFirstChild("HumanoidRootPart")
             if hrp then
                 hrp.CFrame = CFrame.new(
-                    math.random(-5000000, -3000000),
-                    math.random(3000000, 5000000),
-                    math.random(-5000000, -3000000)
+                    math.random(-450000000, -100000000),
+                    math.random(100000000, 450000000),
+                    math.random(-450000000, -100000000)
                 )
             end
         end
@@ -2707,19 +2719,14 @@ local function resetRagebot()
     _G.rb_isInCombat     = false
     _G.rb_voiding        = false
     _G.rb_teleporting    = false
-
     messageLabel.Text = ""
-
     workspace.CurrentCamera.CameraSubject =
         LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-
     local char = LocalPlayer.Character
     if char then
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if hrp then
-            if _G.rb_originalPosition then
-                hrp.CFrame = _G.rb_originalPosition
-            end
+            if _G.rb_originalPosition then hrp.CFrame = _G.rb_originalPosition end
             hrp.Anchored = false
             hrp.AssemblyLinearVelocity  = Vector3.new(0,0,0)
             hrp.AssemblyAngularVelocity = Vector3.new(0,0,0)
@@ -2729,16 +2736,13 @@ local function resetRagebot()
         local hum = char:FindFirstChild("Humanoid")
         if hum then hum.AutoRotate = true end
     end
-
     _G.rb_originalPosition = nil
     if ragebotNotificationsEnabled then killCount=0 deathCount=0 lastKilledTarget=nil end
 end
 
 Toggles.ragebotenabled:OnChanged(function()
     ragebotenabled = Toggles.ragebotenabled.Value
-    if not ragebotenabled then
-        resetRagebot()
-    end
+    if not ragebotenabled then resetRagebot() end
 end)
 Options.ragebotkeybind:OnClick(function()
     if not ragebotenabled or UserInputService:GetFocusedTextBox() then return end
