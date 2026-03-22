@@ -3436,6 +3436,7 @@ ThemeManager:ApplyToTab(Tabs.UI)
 SaveManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({'MenuKeybind'})
+SaveManager:SetFolder('KraviX/configs')
 SaveManager:BuildConfigSection(Tabs.UI)
 
 local MenuGroup = Tabs.UI:AddLeftGroupbox('Menu')
