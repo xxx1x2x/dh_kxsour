@@ -2163,14 +2163,6 @@ do
     local crosshair_last_render = 0
     local crosshair_drawings = {lines={}}
     for i = 1, 4 do crosshair_drawings.lines[i] = Drawing.new('Line') end
-    local crosshair_text = Drawing.new('Text')
-    crosshair_text.Text = 'KraviX'
-    crosshair_text.Size = 13
-    crosshair_text.Font = 2
-    crosshair_text.Color = Color3.fromRGB(255,255,255)
-    crosshair_text.Outline = true
-    crosshair_text.Center = true
-    crosshair_text.Visible = false
     local function crosshair_solve(angle, radius)
         return Vector2.new(math.sin(math.rad(angle))*radius, math.cos(math.rad(angle))*radius)
     end
@@ -2198,12 +2190,8 @@ do
                 line.To  =position+crosshair_solve(angle,ch.radius+length)
                 line.Thickness=ch.width
             end
-        crosshair_text.Position = position + Vector2.new(0, ch.radius + ch.length + 14)
-        crosshair_text.Color = ch.color
-        crosshair_text.Visible = true
         else
             for i = 1, 4 do crosshair_drawings.lines[i].Visible=false end
-            crosshair_text.Visible = false
         end
     end)
     local CrosshairGroup = Tabs.World:AddRightGroupbox('Crosshair')
@@ -2912,7 +2900,6 @@ do
             ragebotenabled=v
             if not v then
                 ragebotactive=false lockedTarget=nil
-                _G.rb_teleporting=false _G.rb_voiding=false _G.rb_isInCombat=false
                 workspace.CurrentCamera.CameraSubject=LocalPlayer.Character:FindFirstChild('Humanoid')
             end
         end
@@ -2920,11 +2907,7 @@ do
         Callback=function(v)
             if not ragebotenabled or UserInputService:GetFocusedTextBox() then return end
             ragebotactive=v
-            if not v then
-                lockedTarget=nil
-                _G.rb_teleporting=false _G.rb_voiding=false _G.rb_isInCombat=false
-                workspace.CurrentCamera.CameraSubject=LocalPlayer.Character:FindFirstChild('Humanoid')
-            end
+            if not v then lockedTarget=nil workspace.CurrentCamera.CameraSubject=LocalPlayer.Character:FindFirstChild('Humanoid') end
         end
     })
     RagebotGroupBox:AddToggle('selecttargets',{Text='Select Targets',Default=false,Callback=function(v) selecttargets=v end})
@@ -2981,225 +2964,6 @@ do
     RagebotGroupBox:AddToggle('ragebotnotifications',{Text='Kill/Death Notifications',Default=false,
         Callback=function(v) ragebotNotificationsEnabled=v if not v then killCount=0 deathCount=0 lastKilledTarget=nil end end
     })
-
-    
-    local autoBuyEnabled = false
-    local autoBuyGuns = {}
-    local autoBuyInProgress = false
-
-    local gunDataRB = {
-        rifle     = {toolName='[Rifle]',     shopName='[Rifle] - $1745',     ammoShopName='5 [Rifle Ammo] - $281',     inventoryKey='[Rifle]'},
-        aug       = {toolName='[AUG]',       shopName='[AUG] - $2195',       ammoShopName='90 [AUG Ammo] - $90',       inventoryKey='[AUG]'},
-        flintlock = {toolName='[Flintlock]', shopName='[Flintlock] - $1463', ammoShopName='6 [Flintlock Ammo] - $168', inventoryKey='[Flintlock]'},
-    }
-
-    local function rbHasGun(toolName)
-        local char = LocalPlayer.Character
-        local bp = LocalPlayer:FindFirstChild('Backpack')
-        if bp then for _,i in ipairs(bp:GetChildren()) do if i:IsA('Tool') and i.Name==toolName then return true end end end
-        if char then for _,i in ipairs(char:GetChildren()) do if i:IsA('Tool') and i.Name==toolName then return true end end end
-        return false
-    end
-
-    local function rbGetAmmo(inventoryKey)
-        local ok, inv = pcall(function() return LocalPlayer.DataFolder.Inventory end)
-        if not ok or not inv then return nil end
-        local a = inv:FindFirstChild(inventoryKey)
-        return a and tonumber(a.Value) or nil
-    end
-
-    local gunBuyPositions = {
-        ['[Rifle] - $1745']              = Vector3.new(-259.658, 49.363, -213.512),
-        ['5 [Rifle Ammo] - $281']        = Vector3.new(-255.258, 49.363, -213.482),
-        ['[AUG] - $2195']                = Vector3.new(-273.048, 49.363, -213.312),
-        ['90 [AUG Ammo] - $90']          = Vector3.new(-278.033, 49.365, -213.394),
-        ['[Flintlock] - $1463']          = Vector3.new(-191.003, 18.850, -119.033),
-        ['6 [Flintlock Ammo] - $168']    = Vector3.new(-191.003, 18.850, -119.033),
-        ['[Shotgun] - $1407']            = Vector3.new(-578.624, 5.472, -725.132),
-        ['20 [Shotgun Ammo] - $68']      = Vector3.new(-578.424, 5.457, -747.132),
-        ['[SMG] - $844']                 = Vector3.new(-577.123, 5.477, -718.031),
-        ['80 [SMG Ammo] - $68']          = Vector3.new(-582.523, 5.478, -717.231),
-        ['[AK47] - $2195']               = Vector3.new(-587.529, 5.395, -753.718),
-        ['90 [AK47 Ammo] - $90']         = Vector3.new(-584.029, 5.393, -755.418),
-        ['[Drum-Shotgun] - $1407']       = Vector3.new(-1193.090, 25.480, -518.450),
-        ['20 [Drum-Shotgun Ammo] - $68'] = Vector3.new(-1193.520, 25.480, -530.230),
-        ['[LMG] - $4098']                = Vector3.new(-620.882, 20.300, -305.339),
-        ['200 [LMG Ammo] - $328']        = Vector3.new(-616.182, 20.300, -305.339),
-        ['[Revolver] - $1463']           = Vector3.new(-868.005, -35.549, -529.420),
-        ['6 [Revolver Ammo] - $168']     = Vector3.new(533.655, 1.731, -257.540),
-        ['[Flamethrower] - $2195']       = Vector3.new(-157.122, 50.913, -105.401),
-        ['90 [Flamethrower Ammo] - $90'] = Vector3.new(-150.322, 50.909, -105.801),
-    }
-
-    local function rbBuyShopItem(shopName, confirmFunc, maxAttempts, yOffset)
-        local buyPos3 = gunBuyPositions[shopName]
-        local cd
-        if buyPos3 then
-            
-            local shop = workspace:FindFirstChild('Ignored') and workspace.Ignored:FindFirstChild('Shop')
-            if shop then
-                local item = shop:FindFirstChild(shopName)
-                if item then
-                    cd = item:FindFirstChild('ClickDetector')
-                    if not cd then for _,v in pairs(item:GetDescendants()) do if v:IsA('ClickDetector') then cd=v break end end end
-                end
-            end
-        else
-            
-            local shop = workspace:FindFirstChild('Ignored') and workspace.Ignored:FindFirstChild('Shop')
-            if not shop then return false end
-            local item = shop:FindFirstChild(shopName)
-            if not item then return false end
-            local head = item:FindFirstChild('Head') or item:FindFirstChildOfClass('BasePart')
-            if not head then return false end
-            buyPos3 = head.Position + Vector3.new(0, yOffset or 3, 0)
-            cd = item:FindFirstChild('ClickDetector')
-            if not cd then for _,v in pairs(item:GetDescendants()) do if v:IsA('ClickDetector') then cd=v break end end end
-        end
-        if not cd then return false end
-        local char = LocalPlayer.Character
-        local hrp = char and char:FindFirstChild('HumanoidRootPart')
-        if not hrp then return false end
-        local hum = char:FindFirstChildOfClass('Humanoid')
-        local bp = LocalPlayer:FindFirstChild('Backpack')
-        if hum then hum:UnequipTools() end
-        if char and bp then
-            for _, tool in ipairs(char:GetChildren()) do
-                if tool:IsA('Tool') then tool.Parent = bp end
-            end
-        end
-        task.wait(0.2)
-        local orig = hrp.CFrame
-        maxAttempts = maxAttempts or 25
-        local attempts = 0
-        char = LocalPlayer.Character
-        hrp = char and char:FindFirstChild('HumanoidRootPart')
-        if not hrp then return false end
-        hrp.CFrame = CFrame.new(buyPos3)
-        task.wait(0.3)
-        fireclickdetector(cd)
-        task.wait(0.3)
-        while attempts < maxAttempts do
-            char = LocalPlayer.Character
-            hrp = char and char:FindFirstChild('HumanoidRootPart')
-            if not hrp then break end
-            hum = char:FindFirstChildOfClass('Humanoid')
-            if not hum or hum.Health <= 0 then break end
-            if confirmFunc and confirmFunc() then break end
-            fireclickdetector(cd)
-            task.wait(0.3)
-            attempts = attempts + 1
-        end
-        task.wait(0.2)
-        char = LocalPlayer.Character
-        hrp = char and char:FindFirstChild('HumanoidRootPart')
-        if hrp then hrp.CFrame = orig end
-        task.wait(0.3)
-        return confirmFunc == nil or (confirmFunc and confirmFunc())
-    end
-
-    task.spawn(function()
-        while true do
-            task.wait(1)
-            if not autoBuyEnabled or not ragebotactive or #autoBuyGuns == 0 then continue end
-            local char = LocalPlayer.Character
-            if not char then continue end
-            local hum = char:FindFirstChildOfClass('Humanoid')
-            if not hum or hum.Health <= 0 then continue end
-            local be = char:FindFirstChild('BodyEffects')
-            if be and be:FindFirstChild('K.O') and be['K.O'].Value then continue end
-            if autoBuyInProgress then continue end
-
-            for _, key in ipairs(autoBuyGuns) do
-                local info = gunDataRB[key]
-                if not info then continue end
-
-                
-                if not rbHasGun(info.toolName) then
-                    autoBuyInProgress = true
-                    ragebotactive = false
-                    _G.rb_teleporting = false _G.rb_voiding = false
-                    task.wait(0.3)
-                    local attempts = 0
-                    
-                    rbBuyShopItem(info.shopName, function() return rbHasGun(info.toolName) end, 25, 3)
-                    
-                    local bp = LocalPlayer:FindFirstChild('Backpack')
-                    local c = LocalPlayer.Character
-                    if bp and c then
-                        for _, selKey in ipairs(autoBuyGuns) do
-                            local selInfo = gunDataRB[selKey]
-                            if selInfo then
-                                local gun = bp:FindFirstChild(selInfo.toolName)
-                                if gun then gun.Parent = c end
-                            end
-                        end
-                    end
-                    if ragebotenabled then ragebotactive = true end
-                    autoBuyInProgress = false
-                    task.wait(1)
-                end
-
-                
-                local ammo = rbGetAmmo(info.inventoryKey)
-                if ammo and ammo <= 3 then
-                    autoBuyInProgress = true
-                    ragebotactive = false
-                    _G.rb_teleporting = false _G.rb_voiding = false
-                    task.wait(0.3)
-                    local initialAmmo = ammo
-                    
-                    local bought = 0
-                    rbBuyShopItem(info.ammoShopName, function()
-                        bought = bought + 1
-                        return bought >= 6
-                    end, 6, -8)
-                    
-                    local c = LocalPlayer.Character
-                    local bp = LocalPlayer:FindFirstChild('Backpack')
-                    if c and bp then
-                        for _, selKey in ipairs(autoBuyGuns) do
-                            local selInfo = gunDataRB[selKey]
-                            if selInfo then
-                                local gun = bp:FindFirstChild(selInfo.toolName)
-                                if gun then gun.Parent = c end
-                            end
-                        end
-                    end
-                    
-                    if c then
-                        for _, tool in ipairs(c:GetChildren()) do
-                            if tool:IsA('Tool') and tool:FindFirstChild('Ammo') then
-                                ReplicatedStorage.MainEvent:FireServer('Reload', tool)
-                            end
-                        end
-                    end
-                    if ragebotenabled then ragebotactive = true end
-                    autoBuyInProgress = false
-                    task.wait(1)
-                end
-            end
-        end
-    end)
-
-    local AutoBuyGroup = Tabs.Ragebot:AddRightGroupbox('Auto Buy Gun/Ammo')
-    AutoBuyGroup:AddToggle('autobuyenabled', {Text='Auto Buy (Need ragebot on)', Default=false,
-        Callback=function(v) autoBuyEnabled=v end
-    })
-    local autoBuyDepBox = AutoBuyGroup:AddDependencyBox()
-    autoBuyDepBox:AddDropdown('autobuygunselect', {
-        Text='Select Guns',
-        Values={'rifle','aug','flintlock'},
-        Default={},
-        Multi=true,
-    })
-    Options.autobuygunselect:OnChanged(function()
-        autoBuyGuns = {}
-        for key, sel in pairs(Options.autobuygunselect.Value) do
-            if sel then table.insert(autoBuyGuns, key) end
-        end
-    end)
-    autoBuyDepBox:SetupDependencies({{Toggles.autobuyenabled, true}})
 
     local AbuseProtection = false
     RespawnAbuseGroupBox:AddToggle('RespawnAbuse',{Text='Enabled',Default=false,Callback=function(v) AbuseProtection=v end})
@@ -3682,4 +3446,4 @@ Options.MenuKeybind:OnClick(function() Library:Toggle() end)
 
 Library:Notify('KraviX Loaded!', 5)
 
---By KraviX Team: Anni:uwu, makarov:fuck you leaker, sixsdev:👑 #1
+--By KraviX Team: Anni:uwu, makarov:fuck you leaker, sixsdev:👑
