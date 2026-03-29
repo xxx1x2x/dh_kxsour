@@ -1086,63 +1086,6 @@ do
     Options.SilentFOVColor:OnChanged(function()  SilentAimSettings.FOVColor  = Options.SilentFOVColor.Value end)
     Toggles.SilentKOCheck:OnChanged(function()   SilentAimSettings.KOCheck   = Toggles.SilentKOCheck.Value end)
 
-    local multigunkeybind = false
-    local availableGuns = {"[Rifle]","[AUG]","[LMG]","[Flintlock]","[AK47]","[P90]","[DrumGun]","[Double-Barrel SG]"}
-    local gunsEnabled = {}
-    for _, gun in ipairs(availableGuns) do gunsEnabled[gun] = false end
-    local MultiGunGroup = Tabs.Aimbot:AddLeftGroupbox('Multi Gun')
-    MultiGunGroup:AddToggle('multiguntoggle', {Text='Multi Gun', Default=false,
-        Callback = function(value)
-            multigunkeybind = value
-            if not value and LocalPlayer.Character then
-                local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-                if hum then hum:UnequipTools() end
-            end
-        end
-    })
-    local multigundepbox = MultiGunGroup:AddDependencyBox()
-    multigundepbox:AddDropdown('GunSelector', {Values=availableGuns, Default=1, Multi=true, Text='Weapons'})
-    Options.GunSelector:OnChanged(function()
-        for gun, sel in next, Options.GunSelector.Value do gunsEnabled[gun] = sel end
-    end)
-    multigundepbox:SetupDependencies({{Toggles.multiguntoggle, true}})
-    local isShooting = false
-    UserInputService.InputBegan:Connect(function(input, gp)
-        if gp then return end
-        if input.UserInputType == Enum.UserInputType.MouseButton1 and multigunkeybind then isShooting = true end
-        if input.KeyCode == Enum.KeyCode.R and multigunkeybind and LocalPlayer.Character then
-            for _, tool in pairs(LocalPlayer.Character:GetChildren()) do
-                if tool:IsA("Tool") and tool:FindFirstChild("Ammo") then
-                    task.spawn(function() ReplicatedStorage.MainEvent:FireServer("Reload", tool) end)
-                end
-            end
-        end
-    end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then isShooting = false end
-    end)
-    task.spawn(function()
-        while true do
-            if multigunkeybind and LocalPlayer.Character then
-                local backpack = LocalPlayer:FindFirstChild("Backpack")
-                if backpack then
-                    for gunName, enabled in pairs(gunsEnabled) do
-                        if enabled then
-                            local tool = backpack:FindFirstChild(gunName)
-                            if tool then tool.Parent = LocalPlayer.Character end
-                        end
-                    end
-                end
-                if isShooting then
-                    for _, tool in pairs(LocalPlayer.Character:GetChildren()) do
-                        if tool:IsA("Tool") and gunsEnabled[tool.Name] then tool:Activate() end
-                    end
-                end
-            end
-            task.wait()
-        end
-    end)
-
     getgenv().range = 250
     getgenv().whitelist = {}
     getgenv().kaTracer = Instance.new("Part")
