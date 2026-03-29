@@ -2163,6 +2163,14 @@ do
     local crosshair_last_render = 0
     local crosshair_drawings = {lines={}}
     for i = 1, 4 do crosshair_drawings.lines[i] = Drawing.new('Line') end
+    local crosshair_text = Drawing.new('Text')
+    crosshair_text.Text = 'KraviX'
+    crosshair_text.Size = 13
+    crosshair_text.Font = 2
+    crosshair_text.Color = Color3.fromRGB(255,255,255)
+    crosshair_text.Outline = true
+    crosshair_text.Center = true
+    crosshair_text.Visible = false
     local function crosshair_solve(angle, radius)
         return Vector2.new(math.sin(math.rad(angle))*radius, math.cos(math.rad(angle))*radius)
     end
@@ -2190,8 +2198,12 @@ do
                 line.To  =position+crosshair_solve(angle,ch.radius+length)
                 line.Thickness=ch.width
             end
+        crosshair_text.Position = position + Vector2.new(0, ch.radius + ch.length + 14)
+        crosshair_text.Color = ch.color
+        crosshair_text.Visible = true
         else
             for i = 1, 4 do crosshair_drawings.lines[i].Visible=false end
+            crosshair_text.Visible = false
         end
     end)
     local CrosshairGroup = Tabs.World:AddRightGroupbox('Crosshair')
