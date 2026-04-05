@@ -2282,9 +2282,9 @@ do
                 local hrp  = char and char:FindFirstChild("HumanoidRootPart")
                 if hrp then
                     hrp.CFrame = CFrame.new(
-                        math.random(-450000000,-100000000),
-                        math.random(100000000,450000000),
-                        math.random(-450000000,-100000000)
+                        math.random(-999999, 999999),
+                        math.random(0, 999999),
+                        math.random(-999999, 999999)
                     )
                 end
             end
@@ -2332,11 +2332,6 @@ do
         while true do
             local char = LocalPlayer.Character
             if char then
-                for _, tool in ipairs(char:GetChildren()) do
-                    if tool:IsA("Tool") and tool:FindFirstChild("Ammo") and tool.Ammo.Value <= 0 then
-                        MainEvent:FireServer("Reload", tool)
-                    end
-                end
                 local be = char:FindFirstChild("BodyEffects")
                 local koVal = be and be:FindFirstChild("K.O")
                 if ragebotactive and koVal and koVal.Value == true then
