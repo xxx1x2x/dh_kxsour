@@ -5,7 +5,7 @@ if not game:IsLoaded() then
 end
 wait(2)
 
-if game.PlaceId ~= 115629697093865 then
+if game.PlaceId ~= 127163360850090 then
     game.Players.LocalPlayer:Kick("\n\nThis script only works on Das Hood!\n\nGame not supported.")
     return
 end
