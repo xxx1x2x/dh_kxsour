@@ -944,79 +944,82 @@ do
     RapidFireGroup:AddToggle('EnableRapidFire', {Text='Enable Rapid Fire', Default=false})
     Toggles.EnableRapidFire:OnChanged(function() getgenv().config.enable = Toggles.EnableRapidFire.Value end)
 
-    local SilentAimSettings = {
-        Enabled=false, FOV=150, ShowFOV=false,
-        FOVColor=Color3.fromRGB(255,255,255), TargetPart="Head", HitChance=100, KOCheck=false
-    }
+    local SilentAimSettings = { Enabled=false, KOCheck=false, TargetPart="Head", FOV=150, ShowFOV=false, FOVColor=Color3.fromRGB(255,255,255) }
+
     local SilentFOVCircle = Drawing.new("Circle")
     SilentFOVCircle.Thickness=2 SilentFOVCircle.NumSides=64
     SilentFOVCircle.Filled=false SilentFOVCircle.Transparency=1
     SilentFOVCircle.Color=SilentAimSettings.FOVColor
 
-    local function GetClosestPlayerSilent()
-        local closestPlayer, shortestDistance = nil, SilentAimSettings.FOV
+    local GunHandler = require(ReplicatedStorage.Modules.GunHandler)
+    local OriginalGetAim = GunHandler.getAim
+
+    local function GetNearestPlayerSilent()
+        local Distance = math.huge
+        local Target = nil
         local screenCenter = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character then
-                local targetPart = plr.Character:FindFirstChild(SilentAimSettings.TargetPart)
-                local hum  = plr.Character:FindFirstChild("Humanoid")
-                local be   = plr.Character:FindFirstChild("BodyEffects")
-                local ko   = be and be:FindFirstChild("K.O")
-                if targetPart and hum and hum.Health > 0 then
-                    if not (SilentAimSettings.KOCheck and ko and ko.Value) then
-                        local pos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
-                        if onScreen then
-                            local dist = (Vector2.new(pos.X,pos.Y) - screenCenter).Magnitude
-                            if dist < shortestDistance then closestPlayer = plr shortestDistance = dist end
-                        end
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr == LocalPlayer or not plr.Character or not plr.Character:FindFirstChild(SilentAimSettings.TargetPart) then continue end
+            local be = plr.Character:FindFirstChild("BodyEffects")
+            local ko = be and be:FindFirstChild("K.O") and be["K.O"].Value
+            if SilentAimSettings.KOCheck and ko then continue end
+            local Position, OnScreen = Camera:WorldToViewportPoint(plr.Character:FindFirstChild(SilentAimSettings.TargetPart).Position)
+            local Magnitude = (Vector2.new(Position.X, Position.Y) - screenCenter).Magnitude
+            if OnScreen and Magnitude <= SilentAimSettings.FOV and Magnitude <= Distance then
+                Distance = Magnitude
+                Target = plr.Character:FindFirstChild(SilentAimSettings.TargetPart)
+            end
+        end
+        return Target
+    end
+
+    RunService.RenderStepped:Connect(function()
+        local sc = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+        SilentFOVCircle.Position = sc
+        SilentFOVCircle.Radius = SilentAimSettings.FOV
+        SilentFOVCircle.Color = SilentAimSettings.FOVColor
+        SilentFOVCircle.Visible = SilentAimSettings.ShowFOV and SilentAimSettings.Enabled
+    end)
+
+    local function applyGunHandlerHook()
+        GunHandler.getAim = function(origin, range)
+            if SilentAimSettings.Enabled then
+                local target = GetNearestPlayerSilent()
+                if target and target.Parent then
+                    local dir = (target.Position - origin)
+                    if dir.Magnitude > 0.001 then
+                        return dir.Unit, range
                     end
                 end
             end
+            local ok, a, b = pcall(OriginalGetAim, origin, range)
+            if ok and a then return a, b end
+            return Camera.CFrame.LookVector, range
         end
-        return closestPlayer
     end
-    RunService.RenderStepped:Connect(function()
-        local sc = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-        SilentFOVCircle.Position=sc SilentFOVCircle.Radius=SilentAimSettings.FOV
-        SilentFOVCircle.Color=SilentAimSettings.FOVColor SilentFOVCircle.Visible=SilentAimSettings.ShowFOV
-    end)
-
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    local oldIndex = mt.__index
-    mt.__index = newcclosure(function(self, key)
-        local mouse = LocalPlayer:GetMouse()
-        if SilentAimSettings.Enabled and key == "Hit" and self == mouse then
-            if math.random(1,100) <= SilentAimSettings.HitChance then
-                local target = GetClosestPlayerSilent()
-                if target and target.Character then
-                    local tp = target.Character:FindFirstChild(SilentAimSettings.TargetPart)
-                    if tp then return CFrame.new(tp.Position) end
-                end
-            end
-        end
-        return oldIndex(self, key)
-    end)
-    setreadonly(mt, true)
+    local function removeGunHandlerHook()
+        GunHandler.getAim = OriginalGetAim
+    end
 
     local SilentGroup = Tabs.Aimbot:AddRightGroupbox("Silent Aim")
-    SilentGroup:AddToggle("EnableSilent",   {Text="Enable Silent Aim", Default=false})
-    SilentGroup:AddSlider("SilentFOV",      {Text="Silent FOV",        Default=150, Min=20, Max=500, Rounding=0})
-    SilentGroup:AddSlider("SilentHitChance",{Text="Hit Chance (%)",    Default=100, Min=1,  Max=100, Rounding=0})
-    SilentGroup:AddToggle("ShowSilentFOV",  {Text="Show Silent FOV",   Default=false})
+    SilentGroup:AddToggle("EnableSilent",      {Text="Enable Silent Aim", Default=false})
+    SilentGroup:AddSlider("SilentFOV",         {Text="Silent FOV",        Default=150, Min=20, Max=500, Rounding=0})
+    SilentGroup:AddToggle("ShowSilentFOV",     {Text="Show FOV Circle",   Default=false})
+    SilentGroup:AddLabel("FOV Color"):AddColorPicker("SilentFOVColor",{Default=Color3.fromRGB(255,255,255),Title="Silent FOV Color",Transparency=0})
+    SilentGroup:AddToggle("SilentKOCheck",     {Text="K.O Check",         Default=false})
     SilentGroup:AddDropdown("SilentTargetPart",{Values={"Head","HumanoidRootPart","UpperTorso"}, Default=1, Multi=false, Text="Target Part"})
-    SilentGroup:AddToggle("SilentKOCheck",  {Text="K.O Check",         Default=false})
-    SilentGroup:AddLabel("Silent FOV Color"):AddColorPicker("SilentFOVColor",{Default=Color3.fromRGB(255,255,255),Title="Silent FOV Color",Transparency=0})
-    Toggles.EnableSilent:OnChanged(function()    SilentAimSettings.Enabled   = Toggles.EnableSilent.Value end)
-    Options.SilentFOV:OnChanged(function()       SilentAimSettings.FOV       = Options.SilentFOV.Value end)
-    Options.SilentHitChance:OnChanged(function() SilentAimSettings.HitChance = Options.SilentHitChance.Value end)
-    Toggles.ShowSilentFOV:OnChanged(function()   SilentAimSettings.ShowFOV   = Toggles.ShowSilentFOV.Value end)
-    Options.SilentTargetPart:OnChanged(function()SilentAimSettings.TargetPart= Options.SilentTargetPart.Value end)
-    Options.SilentFOVColor:OnChanged(function()  SilentAimSettings.FOVColor  = Options.SilentFOVColor.Value end)
-    Toggles.SilentKOCheck:OnChanged(function()   SilentAimSettings.KOCheck   = Toggles.SilentKOCheck.Value end)
+    Toggles.EnableSilent:OnChanged(function()
+        SilentAimSettings.Enabled = Toggles.EnableSilent.Value
+        if SilentAimSettings.Enabled then applyGunHandlerHook() else removeGunHandlerHook() end
+    end)
+    Options.SilentFOV:OnChanged(function()        SilentAimSettings.FOV       = Options.SilentFOV.Value end)
+    Toggles.ShowSilentFOV:OnChanged(function()    SilentAimSettings.ShowFOV   = Toggles.ShowSilentFOV.Value end)
+    Options.SilentFOVColor:OnChanged(function()   SilentAimSettings.FOVColor  = Options.SilentFOVColor.Value end)
+    Toggles.SilentKOCheck:OnChanged(function()    SilentAimSettings.KOCheck   = Toggles.SilentKOCheck.Value end)
+    Options.SilentTargetPart:OnChanged(function() SilentAimSettings.TargetPart = Options.SilentTargetPart.Value end)
 
     local multigunkeybind = false
-    local availableGuns = {"[Rifle]","[AUG]","[LMG]","[Flintlock]","[AK47]","[P90]","[DrumGun]","[Double-Barrel SG]"}
+    local availableGuns = {"[Rifle]","[AUG]","[LMG]","[Flintlock]","[AK47]","[P90]","[DrumGun]","[Double-Barrel SG]","[Deagle]"}
     local gunsEnabled = {}
     for _, gun in ipairs(availableGuns) do gunsEnabled[gun] = false end
     local MultiGunGroup = Tabs.Aimbot:AddLeftGroupbox('Multi Gun')
@@ -1308,7 +1311,7 @@ do
     local Channel = TextChatService.TextChannels:WaitForChild("RBXGeneral")
     local TrashTalkSettings = {
         Mode="Auto", CustomMessage="KraviX on top #1",
-        Presets={"KraviX on top #1","KraviX killed you","KraviX is hard","Get KX PREMIUM","fDdwWjz8yk","Get better"}
+        Presets={"KraviX on top #1","Kravix, the best script for Das Hood.","Get KraviX ","Get KX PREMIUM","/fDdwWjz8yk","Get bette hahaha"}
     }
     local function sendTrashTalk()
         local msg = TrashTalkSettings.Mode=="Auto"
@@ -1855,6 +1858,7 @@ do
 
     MiscGroup:AddToggle("EnableAntiSlow",  {Text="Anti Slow",        Default=false})
     MiscGroup:AddToggle("EnableNoClip",    {Text="No Clip",          Default=false})
+    MiscGroup:AddToggle("AutoSilentReload",{Text="Auto Reload",      Default=false})
     MiscGroup:AddToggle("HideCrosshairToggle", {Text="Hide Crosshair", Default=false})
     MiscGroup:AddToggle("AntiFlingToggle", {Text="Anti Fling",       Default=false})
     MiscGroup:AddToggle("AntiSitToggle",   {Text="Anti Sit",         Default=false})
@@ -1991,6 +1995,28 @@ do
     end
 
     MainEvent = ReplicatedStorage:WaitForChild("MainEvent")
+
+    local silentReloadConn = nil
+    local function setupSilentReload(enabled)
+        if silentReloadConn then silentReloadConn:Disconnect() silentReloadConn=nil end
+        if enabled and LocalPlayer.Character then
+            local hum = LocalPlayer.Character:WaitForChild("Humanoid")
+            silentReloadConn = RunService.Heartbeat:Connect(function()
+                for _, track in pairs(hum:GetPlayingAnimationTracks()) do
+                    if track.Animation.AnimationId == "rbxassetid://2877910736" then track:Stop() end
+                end
+            end)
+        end
+    end
+    RunService.Heartbeat:Connect(function()
+        if not (Toggles.AutoSilentReload and Toggles.AutoSilentReload.Value) then return end
+        if not LocalPlayer.Character then return end
+        local tool = LocalPlayer.Character:FindFirstChildWhichIsA("Tool")
+        if tool and tool:FindFirstChild("Ammo") and tool.Ammo.Value <= 0 then
+            MainEvent:FireServer("Reload", tool)
+        end
+    end)
+    Toggles.AutoSilentReload:OnChanged(function() setupSilentReload(Toggles.AutoSilentReload.Value) end)
 
     if not _G.autoStompReady then
         _G.autoStompReady = true
@@ -2149,7 +2175,7 @@ do
     local RagebotGroupBox      = Tabs.Ragebot:AddLeftGroupbox('Ragebot')
     local DesyncGroup          = Tabs.Ragebot:AddRightGroupbox('Desync')
 
-    DesyncGroup:AddToggle('DesyncEnabled',     {Text='Desync',          Default=false})
+    DesyncGroup:AddToggle('DesyncEnabled',     {Text='Desync',          Default=false}):AddKeyPicker('DesyncKeybind',{Default='',SyncToggleState=false,Mode='Toggle',Text='Desync Key',NoUI=false})
     DesyncGroup:AddToggle('DesyncStayInVoid',  {Text='Stay In Void',    Default=false})
     DesyncGroup:AddToggle('DesyncSpam',        {Text='Spam',            Default=false})
     DesyncGroup:AddToggle('DesyncVisualize',   {Text='Visualize',       Default=false})
@@ -2158,6 +2184,9 @@ do
     DesyncGroup:AddSlider('DesyncOnGround',    {Text='On Ground Time',  Default=0.133, Min=0.05, Max=2, Rounding=3})
     DesyncGroup:AddSlider('DesyncTransparency',{Text='Visualize Trans', Default=0,     Min=0,    Max=1, Rounding=2})
     Toggles.DesyncEnabled:OnChanged(function()     Desync.Enabled     = Toggles.DesyncEnabled.Value end)
+    Options.DesyncKeybind:OnClick(function()
+        Toggles.DesyncEnabled:SetValue(not Toggles.DesyncEnabled.Value)
+    end)
     Toggles.DesyncStayInVoid:OnChanged(function()  Desync.StayInVoid  = Toggles.DesyncStayInVoid.Value end)
     Toggles.DesyncSpam:OnChanged(function()        Desync.Spam        = Toggles.DesyncSpam.Value end)
     Toggles.DesyncVisualize:OnChanged(function()   Desync.Visualize   = Toggles.DesyncVisualize.Value end)
@@ -2589,7 +2618,7 @@ do
     end)
 end
 
-print("KraviX Loaded Successfully!")
+
 
 ThemeManager:SetLibrary(Library)
 ThemeManager:SetFolder('KraviX')
