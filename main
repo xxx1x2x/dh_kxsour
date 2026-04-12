@@ -3317,7 +3317,7 @@ do
     end)
 end
 
-print("KraviX Loaded Successfully!")
+
 
 ThemeManager:SetLibrary(Library)
 ThemeManager:SetFolder('KraviX')
