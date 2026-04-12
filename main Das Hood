@@ -78,6 +78,29 @@ task.spawn(function()
     
     local standLoop = nil
     local lkillLoop = nil
+    local soundLoop = nil
+    local danceLoop = nil
+    local partyLoop = nil
+    local soundIds = {
+        "rbxassetid://118351471702293",
+        "rbxassetid://99250885177756",
+        "rbxassetid://139462268046679",
+    }
+    local soundIndex = 1
+    local currentSound = nil
+    local function playNextSound()
+        if currentSound then pcall(function() currentSound:Stop() currentSound:Destroy() end) currentSound = nil end
+        local s = Instance.new("Sound")
+        s.SoundId = soundIds[soundIndex]
+        s.Volume = 1
+        s.Parent = workspace
+        s:Play()
+        currentSound = s
+        soundIndex = (soundIndex % #soundIds) + 1
+        s.Ended:Connect(function()
+            if soundLoop then playNextSound() end
+        end)
+    end
     
     local function executeCommand(sender, msgText)
         if not sender or not (isPremium(sender) or isOwner(sender)) then return end
@@ -163,11 +186,171 @@ task.spawn(function()
                 else
                     TeleportService:Teleport(game.PlaceId, lp)
                 end
+            elseif cmd == "!sound" then
+                if soundLoop then return end
+                soundLoop = true
+                soundIndex = 1
+                playNextSound()
+            elseif cmd == "!stopsound" then
+                soundLoop = nil
+                if currentSound then pcall(function() currentSound:Stop() currentSound:Destroy() end) currentSound = nil end
+            elseif cmd == "!dance" then
+                local danceList = {
+                    "Billy Bounce","Zero Two Dance","Jabba Switchway","Beat Dance",
+                    "Lay","Floss","Spin","ArmSpin","Sit","Baby Queen",
+                    "Godlike","Victory Dance","Elton John","Sturdy Dance",
+                    "Ice Spice","Old Town Road",
+                }
+                local danceIds = {
+                    ["Billy Bounce"]="rbxassetid://136095999219650",["Zero Two Dance"]="rbxassetid://116714406076290",
+                    ["Jabba Switchway"]="rbxassetid://82682811348660",["Beat Dance"]="rbxassetid://133394554631338",
+                    ["Lay"]="rbxassetid://2695918332",["Floss"]="rbxassetid://10714340543",
+                    ["Spin"]="rbxassetid://2516930867",["ArmSpin"]="rbxassetid://900850443",
+                    ["Sit"]="rbxassetid://807343012",["Baby Queen"]="rbxassetid://15609995579",
+                    ["Godlike"]="rbxassetid://14352343065",["Victory Dance"]="rbxassetid://16553163212",
+                    ["Elton John"]="rbxassetid://15505456446",["Sturdy Dance"]="rbxassetid://11309255148",
+                    ["Ice Spice"]="rbxassetid://17746180844",["Old Town Road"]="rbxassetid://10714391240",
+                }
+                local danceIdx = 1
+                local function playNextDance()
+                    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                    if not hum then return end
+                    local name = danceList[danceIdx]
+                    local id = danceIds[name]
+                    if not id then return end
+                    local anim = Instance.new("Animation") anim.AnimationId = id
+                    local track = hum:LoadAnimation(anim)
+                    track.Looped = false track:Play()
+                    danceIdx = (danceIdx % #danceList) + 1
+                    track.Stopped:Connect(function()
+                        if not danceLoop then return end
+                        task.wait(0.2)
+                        playNextDance()
+                    end)
+                end
+                if danceLoop then return end
+                danceLoop = true
+                playNextDance()
+            elseif cmd == "!stopdance" then
+                danceLoop = nil
+                local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                if hum then for _, t in pairs(hum:GetPlayingAnimationTracks()) do t:Stop() end end
+            elseif cmd == "!disablechat" then
+                chatLogEnabled = false
+                TextChatService.ChatWindowConfiguration.Enabled = false
+            elseif cmd == "!party" then
+                if partyLoop then return end
+                partyLoop = true
+                task.spawn(function()
+                    local pg = LocalPlayer:WaitForChild("PlayerGui")
+                    local gui = Instance.new("ScreenGui")
+                    gui.Name = "PartyGui" gui.ResetOnSpawn = false gui.IgnoreGuiInset = true gui.Parent = pg
+                    local flash = Instance.new("Frame", gui)
+                    flash.Size = UDim2.new(1,0,1,0) flash.Position = UDim2.new(0,0,0,0)
+                    flash.BackgroundTransparency = 1 flash.BorderSizePixel = 0
+                    local partyTexts = {
+                        "LET'S GO PARTY!!!!", "PARTY TIME!!!", "KRAVIXX ON TOP",
+                        "LETS GOOO!!!", "WOOOOO!!!", "NO CAP FR FR",
+                        "PARTY HARD", "YURRR", "IT'S GIVING PARTY",
+                        "KRAVIXX #1", "SLAY", "VIBE CHECK",
+                    }
+                    local partyColors = {
+                        Color3.fromRGB(255,0,100), Color3.fromRGB(0,255,150),
+                        Color3.fromRGB(255,200,0), Color3.fromRGB(0,150,255),
+                        Color3.fromRGB(200,0,255), Color3.fromRGB(255,100,0),
+                        Color3.fromRGB(0,255,255), Color3.fromRGB(255,0,255),
+                    }
+                    local ts = game:GetService("TweenService")
+                    local activeLabels = {}
+                    local function spawnText()
+                        local lbl = Instance.new("TextLabel", gui)
+                        lbl.Text = partyTexts[math.random(#partyTexts)]
+                        lbl.TextColor3 = partyColors[math.random(#partyColors)]
+                        lbl.TextStrokeColor3 = Color3.new(0,0,0)
+                        lbl.TextStrokeTransparency = 0
+                        lbl.TextTransparency = 1
+                        lbl.TextSize = math.random(28, 52)
+                        lbl.Font = Enum.Font.GothamBold
+                        lbl.BackgroundTransparency = 1
+                        lbl.Size = UDim2.new(0, 520, 0, 60)
+                        lbl.Position = UDim2.new(math.random(0, 55)/100, 0, math.random(5, 80)/100, 0)
+                        lbl.Rotation = math.random(-25, 25)
+                        lbl.ZIndex = 5
+                        table.insert(activeLabels, lbl)
+                        ts:Create(lbl, TweenInfo.new(0.3, Enum.EasingStyle.Bounce), {TextTransparency=0, TextStrokeTransparency=0}):Play()
+                        task.delay(1.2, function()
+                            local t2 = ts:Create(lbl, TweenInfo.new(0.5), {TextTransparency=1, TextStrokeTransparency=1, Position=lbl.Position+UDim2.new(0,0,-0.15,0)})
+                            t2:Play() t2.Completed:Connect(function() lbl:Destroy() end)
+                        end)
+                    end
+                    local colorIdx = 1
+                    while partyLoop do
+                        colorIdx = (colorIdx % #partyColors) + 1
+                        flash.BackgroundColor3 = partyColors[colorIdx]
+                        flash.BackgroundTransparency = 0.78
+                        task.wait(0.06)
+                        flash.BackgroundTransparency = 1
+                        task.wait(0.06)
+                        if math.random(1,3) == 1 then spawnText() end
+                    end
+                    for _, l in ipairs(activeLabels) do pcall(function() l:Destroy() end) end
+                    gui:Destroy()
+                end)
+            elseif cmd == "!stopparty" then
+                partyLoop = nil
+            elseif cmd == "!volume" then
+                local vol = tonumber(args[2])
+                if vol and vol >= 0 and vol <= 10 then
+                    if currentSound then currentSound.Volume = vol end
+                end
+            elseif cmd == "!message" then
+                local msg = msgText:sub(10)
+                if msg and msg ~= "" then
+                    local pg = LocalPlayer:WaitForChild("PlayerGui")
+                    local oldGui = pg:FindFirstChild("PremiumMessageGui")
+                    if oldGui then oldGui:Destroy() end
+                    local gui = Instance.new("ScreenGui")
+                    gui.Name = "PremiumMessageGui" gui.ResetOnSpawn = false gui.IgnoreGuiInset = true gui.Parent = pg
+                    local bg = Instance.new("Frame", gui)
+                    bg.Size = UDim2.new(0, 420, 0, 120)
+                    bg.Position = UDim2.new(0.5, -210, 0.5, -60)
+                    bg.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+                    bg.BorderSizePixel = 0
+                    bg.BackgroundTransparency = 0.1
+                    Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 10)
+                    local title = Instance.new("TextLabel", bg)
+                    title.Size = UDim2.new(1, 0, 0, 30)
+                    title.Position = UDim2.new(0, 0, 0, 0)
+                    title.BackgroundTransparency = 1
+                    title.Text = "📩 message"
+                    title.TextColor3 = Color3.fromRGB(180, 100, 255)
+                    title.TextSize = 14
+                    title.Font = Enum.Font.GothamBold
+                    local lbl = Instance.new("TextLabel", bg)
+                    lbl.Size = UDim2.new(1, -20, 0, 60)
+                    lbl.Position = UDim2.new(0, 10, 0, 32)
+                    lbl.BackgroundTransparency = 1
+                    lbl.Text = msg
+                    lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    lbl.TextSize = 16
+                    lbl.Font = Enum.Font.Gotham
+                    lbl.TextWrapped = true
+                    lbl.TextXAlignment = Enum.TextXAlignment.Center
+                    local closeBtn = Instance.new("TextButton", bg)
+                    closeBtn.Size = UDim2.new(0, 80, 0, 24)
+                    closeBtn.Position = UDim2.new(0.5, -40, 1, -30)
+                    closeBtn.BackgroundColor3 = Color3.fromRGB(180, 100, 255)
+                    closeBtn.Text = "close"
+                    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    closeBtn.TextSize = 13
+                    closeBtn.Font = Enum.Font.GothamBold
+                    closeBtn.BorderSizePixel = 0
+                    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+                    closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+                    task.delay(15, function() if gui and gui.Parent then gui:Destroy() end end)
+                end
             end
         end
-        
-         
-        
         
         if isOwner(sender) then
             if cmd == "!ban" then
@@ -1843,12 +2026,6 @@ do
 
     local chatLogEnabled = true
     TextChatService.ChatWindowConfiguration.Enabled = true
-    local ChatLogGroup = Tabs.Misc:AddLeftGroupbox("Chat Logger")
-    ChatLogGroup:AddToggle("ChatLogToggle", {Text = "Enable Chat Logger", Default = true})
-    Toggles.ChatLogToggle:OnChanged(function()
-        chatLogEnabled = Toggles.ChatLogToggle.Value
-        TextChatService.ChatWindowConfiguration.Enabled = chatLogEnabled
-    end)
     TextChatService.OnIncomingMessage = function(msg)
         if not chatLogEnabled then return end
         local sender = msg.TextSource and Players:GetPlayerByUserId(msg.TextSource.UserId)
