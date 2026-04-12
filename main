@@ -1008,194 +1008,109 @@ do
     Toggles.EnableRapidFire:OnChanged(function() getgenv().config.enable = Toggles.EnableRapidFire.Value end)
     Toggles.EnableBulletTP:OnChanged(function()  BulletTPSettings.Enabled = Toggles.EnableBulletTP.Value end)
 
-    local SilentAimSettings = {
-        Enabled=false, FOV=150, ShowFOV=false,
-        FOVColor=Color3.fromRGB(255,255,255), TargetPart="Head", HitChance=100, KOCheck=false
-    }
-    local SilentFOVCircle = Drawing.new("Circle")
-    SilentFOVCircle.Thickness=2 SilentFOVCircle.NumSides=64
-    SilentFOVCircle.Filled=false SilentFOVCircle.Transparency=1
-    SilentFOVCircle.Color=SilentAimSettings.FOVColor
+    local SilentAimSettings = { Enabled=false, KOCheck=false, TargetPart="Head" }
 
-    local function GetClosestPlayerSilent()
-        local closestPlayer, shortestDistance = nil, SilentAimSettings.FOV
-        local screenCenter = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character then
-                local targetPart = plr.Character:FindFirstChild(SilentAimSettings.TargetPart)
-                local hum  = plr.Character:FindFirstChild("Humanoid")
-                local be   = plr.Character:FindFirstChild("BodyEffects")
-                local ko   = be and be:FindFirstChild("K.O")
-                if targetPart and hum and hum.Health > 0 then
-                    if not (SilentAimSettings.KOCheck and ko and ko.Value) then
-                        local pos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
-                        if onScreen then
-                            local dist = (Vector2.new(pos.X,pos.Y) - screenCenter).Magnitude
-                            if dist < shortestDistance then closestPlayer = plr shortestDistance = dist end
-                        end
-                    end
-                end
+    local GunHandler = require(ReplicatedStorage.Modules.GunHandler)
+    local OriginalGetAim = GunHandler.getAim
+
+    local function GetNearestPlayerSilent()
+        local Distance = math.huge
+        local Target = nil
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr == LocalPlayer or not plr.Character or not plr.Character:FindFirstChild(SilentAimSettings.TargetPart) then continue end
+            local be = plr.Character:FindFirstChild("BodyEffects")
+            local ko = be and be:FindFirstChild("K.O") and be["K.O"].Value
+            if SilentAimSettings.KOCheck and ko then continue end
+            local Position, OnScreen = Camera:WorldToViewportPoint(plr.Character:FindFirstChild(SilentAimSettings.TargetPart).Position)
+            local Magnitude = (Vector2.new(Position.X, Position.Y) - UserInputService:GetMouseLocation()).Magnitude
+            if OnScreen and Magnitude <= Distance and Magnitude <= 1000 then
+                Distance = Magnitude
+                Target = plr.Character:FindFirstChild(SilentAimSettings.TargetPart)
             end
         end
-        return closestPlayer
+        return Target
     end
+
+    local function GetNearestPlayerTracer()
+        local Distance = math.huge
+        local Target = nil
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr == LocalPlayer or not plr.Character or not plr.Character:FindFirstChild(SilentAimSettings.TargetPart) then continue end
+            local be = plr.Character:FindFirstChild("BodyEffects")
+            local ko = be and be:FindFirstChild("K.O") and be["K.O"].Value
+            if SilentAimSettings.KOCheck and ko then continue end
+            local Position, OnScreen = Camera:WorldToViewportPoint(plr.Character:FindFirstChild(SilentAimSettings.TargetPart).Position)
+            local Magnitude = (Vector2.new(Position.X, Position.Y) - UserInputService:GetMouseLocation()).Magnitude
+            if OnScreen and Magnitude <= Distance and Magnitude <= 1000 then
+                Distance = Magnitude
+                Target = plr.Character:FindFirstChild(SilentAimSettings.TargetPart)
+            end
+        end
+        return Target
+    end
+
+    local SilentTracer = Drawing.new("Line")
+    SilentTracer.Thickness = 1
+    SilentTracer.Color = Color3.fromRGB(255,255,255)
+    SilentTracer.Transparency = 1
+    SilentTracer.Visible = false
+
     RunService.RenderStepped:Connect(function()
-        local sc = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-        SilentFOVCircle.Position=sc SilentFOVCircle.Radius=SilentAimSettings.FOV
-        SilentFOVCircle.Color=SilentAimSettings.FOVColor SilentFOVCircle.Visible=SilentAimSettings.ShowFOV
-    end)
-
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    local oldIndex = mt.__index
-    mt.__index = newcclosure(function(self, key)
-        local mouse = LocalPlayer:GetMouse()
-        if BulletTPSettings.Enabled and self == mouse and (key == "Hit" or (key == "Target" and game.PlaceId == 2788229376)) then
-            local target = BulletTPTarget
-            if target and target.Character then
-                local part = target.Character:FindFirstChild("Head")
-                if part then return CFrame.new(part.Position) end
-            end
-        end
-        if SilentAimSettings.Enabled and key == "Hit" and self == mouse then
-            if math.random(1,100) <= SilentAimSettings.HitChance then
-                local target = GetClosestPlayerSilent()
-                if target and target.Character then
-                    local tp = target.Character:FindFirstChild(SilentAimSettings.TargetPart)
-                    if tp then return CFrame.new(tp.Position) end
-                end
-            end
-        end
-        return oldIndex(self, key)
-    end)
-    setreadonly(mt, true)
-
-    local SilentGroup = Tabs.Aimbot:AddRightGroupbox("Silent Aim")
-    SilentGroup:AddToggle("EnableSilent",   {Text="Enable Silent Aim", Default=false})
-    SilentGroup:AddSlider("SilentFOV",      {Text="Silent FOV",        Default=150, Min=20, Max=500, Rounding=0})
-    SilentGroup:AddSlider("SilentHitChance",{Text="Hit Chance (%)",    Default=100, Min=1,  Max=100, Rounding=0})
-    SilentGroup:AddToggle("ShowSilentFOV",  {Text="Show Silent FOV",   Default=false})
-    SilentGroup:AddDropdown("SilentTargetPart",{Values={"Head","HumanoidRootPart","UpperTorso"}, Default=1, Multi=false, Text="Target Part"})
-    SilentGroup:AddToggle("SilentKOCheck",  {Text="K.O Check",         Default=false})
-    SilentGroup:AddLabel("Silent FOV Color"):AddColorPicker("SilentFOVColor",{Default=Color3.fromRGB(255,255,255),Title="Silent FOV Color",Transparency=0})
-    Toggles.EnableSilent:OnChanged(function()    SilentAimSettings.Enabled   = Toggles.EnableSilent.Value end)
-    Options.SilentFOV:OnChanged(function()       SilentAimSettings.FOV       = Options.SilentFOV.Value end)
-    Options.SilentHitChance:OnChanged(function() SilentAimSettings.HitChance = Options.SilentHitChance.Value end)
-    Toggles.ShowSilentFOV:OnChanged(function()   SilentAimSettings.ShowFOV   = Toggles.ShowSilentFOV.Value end)
-    Options.SilentTargetPart:OnChanged(function()SilentAimSettings.TargetPart= Options.SilentTargetPart.Value end)
-    Options.SilentFOVColor:OnChanged(function()  SilentAimSettings.FOVColor  = Options.SilentFOVColor.Value end)
-    Toggles.SilentKOCheck:OnChanged(function()   SilentAimSettings.KOCheck   = Toggles.SilentKOCheck.Value end)
-
-    getgenv().range = 250
-    getgenv().whitelist = {}
-    getgenv().kaTracer = Instance.new("Part")
-    getgenv().kaTracer.Size=Vector3.new(0.2,0.2,0.2) getgenv().kaTracer.Material=Enum.Material.Neon
-    getgenv().kaTracer.Color=Color3.new(1,0,0) getgenv().kaTracer.Transparency=1
-    getgenv().kaTracer.Anchored=true getgenv().kaTracer.CanCollide=false getgenv().kaTracer.Parent=workspace
-    getgenv().kaEnabled=false getgenv().kaActive=false getgenv().kaVisualize=false
-    getgenv().kaSilent=false getgenv().kaStompAura=false
-
-    local KillAuraGroup = Tabs.Aimbot:AddRightGroupbox('Kill Aura')
-    KillAuraGroup:AddToggle('MainToggle', {Text='Kill Aura', Default=false,
-        Callback=function(state)
-            getgenv().kaEnabled = state
-            if not state then getgenv().kaActive=false getgenv().kaTracer.Transparency=1 end
-        end
-    }):AddKeyPicker('Keybind',{Default='K',Text='Kill Aura',Mode='Toggle',
-        Callback=function(state)
-            if not getgenv().kaEnabled or UserInputService:GetFocusedTextBox() then return end
-            getgenv().kaActive = state
-        end
-    })
-    KillAuraGroup:AddSlider("Range",{Text="Range",Default=250,Min=10,Max=250,Rounding=1,
-        Callback=function(v) getgenv().range=v end})
-    KillAuraGroup:AddToggle('Visualizer',{Text='Visualize',Default=false,
-        Callback=function(s) getgenv().kaVisualize=s end
-    }):AddColorPicker('VisualizerColor',{Text='Color',Default=Color3.new(1,0,0),
-        Callback=function(v) getgenv().kaTracer.Color=v end})
-    KillAuraGroup:AddToggle('Silent',    {Text='Silent',     Default=false, Callback=function(s) getgenv().kaSilent=s end})
-    KillAuraGroup:AddToggle('StompAura', {Text='Stomp Aura', Default=false, Callback=function(s) getgenv().kaStompAura=s end})
-    KillAuraGroup:AddInput('wlb',{Default='',Numeric=false,Finished=false,Text='Add/Remove Player',Placeholder='Player Name',
-        Callback=function(input)
-            for _, player in pairs(Players:GetPlayers()) do
-                if player.Name == input or player.DisplayName == input then
-                    if getgenv().whitelist[player.Name] then
-                        getgenv().whitelist[player.Name] = nil
-                        Library:Notify(player.Name.." removed from whitelist.", 2)
-                    else
-                        getgenv().whitelist[player.Name] = true
-                        Library:Notify(player.Name.." added to whitelist.", 2)
-                    end
+        if SilentAimSettings.Enabled and Toggles.SilentTracer and Toggles.SilentTracer.Value then
+            local target = GetNearestPlayerTracer()
+            if target then
+                local headPos, onScreen = Camera:WorldToViewportPoint(target.Position)
+                local mousePos = UserInputService:GetMouseLocation()
+                if onScreen then
+                    SilentTracer.From = mousePos
+                    SilentTracer.To = Vector2.new(headPos.X, headPos.Y)
+                    SilentTracer.Visible = true
                     return
                 end
             end
-            Library:Notify("Player not found.", 2)
         end
-    })
-    task.spawn(function()
-        while true do
-            if getgenv().kaActive and getgenv().kaEnabled and LocalPlayer.Character then
-                local char = LocalPlayer.Character
-                local hrp  = char:FindFirstChild("HumanoidRootPart")
-                local tool = char:FindFirstChildOfClass("Tool")
-                local handle = tool and tool:FindFirstChild("Handle")
-                if hrp and tool and handle then
-                    local myBE = workspace:FindFirstChild("Players") and workspace.Players:FindFirstChild(LocalPlayer.Name)
-                    local myKO = myBE and myBE:FindFirstChild("BodyEffects") and myBE.BodyEffects:FindFirstChild("K.O")
-                    if not (myKO and myKO.Value) then
-                        local closest, kaTarget = math.huge, nil
-                        for _, player in pairs(Players:GetPlayers()) do
-                            if player ~= LocalPlayer and not getgenv().whitelist[player.Name] and player.Character then
-                                local pChar = player.Character
-                                local pHead = pChar:FindFirstChild("Head")
-                                if pHead and not pChar:FindFirstChild("GRABBING_CONSTRAINT") then
-                                    local pBE  = workspace.Players and workspace.Players:FindFirstChild(player.Name)
-                                    local pKO  = pBE and pBE:FindFirstChild("BodyEffects") and pBE.BodyEffects:FindFirstChild("K.O")
-                                    local isKO = pKO and pKO.Value
-                                    if not isKO then
-                                        local dist = (hrp.Position - pHead.Position).Magnitude
-                                        if dist < closest and dist <= getgenv().range then closest=dist kaTarget=player end
-                                    elseif isKO and getgenv().kaStompAura then
-                                        local pSD = pBE and pBE:FindFirstChild("BodyEffects") and pBE.BodyEffects:FindFirstChild("SDeath")
-                                        if not (pSD and pSD.Value) then
-                                            local dist = (hrp.Position - pHead.Position).Magnitude
-                                            if dist <= getgenv().range then
-                                                local ut = pChar:FindFirstChild("UpperTorso")
-                                                local myReload = char:FindFirstChild("BodyEffects") and char.BodyEffects:FindFirstChild("Reload")
-                                                if ut and not (myReload and myReload.Value) then
-                                                    local savedCF = hrp.CFrame
-                                                    Camera.CameraSubject = char:FindFirstChildOfClass("Humanoid")
-                                                    hrp.CFrame = CFrame.new(ut.Position + Vector3.new(0,3,0))
-                                                    ReplicatedStorage.MainEvent:FireServer("Stomp")
-                                                    task.wait(0.1)
-                                                    hrp.CFrame = savedCF
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end
+        SilentTracer.Visible = false
+    end)
+
+    local function applyGunHandlerHook()
+        GunHandler.getAim = function(origin, range)
+            if SilentAimSettings.Enabled then
+                local target = GetNearestPlayerSilent()
+                if target and target.Parent then
+                    local dir = (target.Position - origin)
+                    if dir.Magnitude > 0.001 then
+                        local screenPos, onScreen = Camera:WorldToViewportPoint(target.Position)
+                        if onScreen and screenPos.Z > 0 then
+                            local cur = UserInputService:GetMouseLocation()
+                            pcall(mousemoverel, screenPos.X - cur.X, screenPos.Y - cur.Y)
                         end
-                        if kaTarget and kaTarget.Character and kaTarget.Character:FindFirstChild("Head") then
-                            local tHead = kaTarget.Character.Head
-                            if getgenv().kaVisualize then
-                                getgenv().kaTracer.Transparency = 0
-                                local mag = (hrp.Position - tHead.Position).Magnitude
-                                getgenv().kaTracer.Size = Vector3.new(0.2,0.2,mag)
-                                getgenv().kaTracer.CFrame = CFrame.lookAt(hrp.Position, tHead.Position) * CFrame.new(0,0,-mag/2)
-                            else getgenv().kaTracer.Transparency = 1 end
-                            if getgenv().kaSilent then
-                                ReplicatedStorage.MainEvent:FireServer("ShootGun", handle, handle.CFrame.Position-Vector3.new(0,12,0), tHead.Position-Vector3.new(0,12,0), tHead, Vector3.new(0,0,-1))
-                            else
-                                ReplicatedStorage.MainEvent:FireServer("ShootGun", handle, handle.CFrame.Position, tHead.Position, tHead, Vector3.new(0,0,-1))
-                            end
-                        else getgenv().kaTracer.Transparency = 1 end
+                        return dir.Unit, range
                     end
                 end
-            else getgenv().kaTracer.Transparency = 1 end
-            task.wait()
+            end
+            -- fallback seguro: usa direção da câmera se OriginalGetAim falhar
+            local ok, a, b = pcall(OriginalGetAim, origin, range)
+            if ok and a then return a, b end
+            return Camera.CFrame.LookVector, range
         end
+    end
+    local function removeGunHandlerHook()
+        GunHandler.getAim = OriginalGetAim
+    end
+
+    local SilentGroup = Tabs.Aimbot:AddRightGroupbox("Silent Aim")
+    SilentGroup:AddToggle("EnableSilent",  {Text="Enable Silent Aim", Default=false})
+    SilentGroup:AddToggle("SilentTracer",  {Text="Tracer",            Default=false})
+    SilentGroup:AddToggle("SilentKOCheck", {Text="K.O Check (Tracer)", Default=false})
+    SilentGroup:AddDropdown("SilentTargetPart", {Values={"Head","HumanoidRootPart","UpperTorso"}, Default=1, Multi=false, Text="Target Part"})
+    SilentGroup:AddLabel("Tracer Color"):AddColorPicker("SilentTracerColor",{Default=Color3.fromRGB(255,255,255),Title="Tracer Color",Transparency=0})
+    Toggles.EnableSilent:OnChanged(function()
+        SilentAimSettings.Enabled = Toggles.EnableSilent.Value
+        if SilentAimSettings.Enabled then applyGunHandlerHook() else removeGunHandlerHook() end
     end)
+    Toggles.SilentKOCheck:OnChanged(function() SilentAimSettings.KOCheck = Toggles.SilentKOCheck.Value end)
+    Options.SilentTargetPart:OnChanged(function() SilentAimSettings.TargetPart = Options.SilentTargetPart.Value end)
+    Options.SilentTracerColor:OnChanged(function() SilentTracer.Color = Options.SilentTracerColor.Value end)
 
     local all_items = {}
     local BuyGunGroup = Tabs.Aimbot:AddRightGroupbox('Auto Buy')
@@ -2850,7 +2765,7 @@ do
     Options.DesyncOnGround:OnChanged(function()    Desync.OnGround    = Options.DesyncOnGround.Value end)
     Options.DesyncTransparency:OnChanged(function() Desync.Transparency= Options.DesyncTransparency.Value end)
 
-    RagebotGroupBox:AddToggle('ragebotenabled',{Text='Enabled',Default=false,
+    RagebotGroupBox:AddToggle('ragebotenabled',{Text='Enabled (Ban risk)',Default=false,
         Callback=function(v)
             ragebotenabled=v
             if not v then
@@ -2910,6 +2825,9 @@ do
     })
     RagebotGroupBox:AddToggle('useflame',{Text='Use Flamethrower',Default=false,Callback=function(v) flamethrower_hack=v end})
     RagebotGroupBox:AddDropdown('settingsdropdown',{Text='Settings',Values={'Stomp','Random TP','Random Rotation','View'},Default=0,Multi=true})
+    RagebotGroupBox:AddSlider('RbOrbitSpeed',  {Text='Orbit Speed',  Default=8,  Min=1, Max=30, Rounding=1})
+    RagebotGroupBox:AddSlider('RbOrbitRadius', {Text='Orbit Radius', Default=15, Min=3, Max=40, Rounding=0})
+    RagebotGroupBox:AddSlider('RbOrbitHeight', {Text='Orbit Height', Default=3,  Min=0, Max=15, Rounding=0})
     Options.settingsdropdown:OnChanged(function()
         local s = Options.settingsdropdown.Value
         ragebotstompactive=s['Stomp'] ragebotrandomtpactive=s['Random TP']
@@ -3314,14 +3232,31 @@ do
                 RunService.RenderStepped:Wait()
                 if not ragebotactive then RootPart.CFrame=_G.rb_originalPosition or RootPart.CFrame return end
             elseif ragebotrandomtpactive then
+                -- Orbit rápida: incrementa ângulo a cada frame para movimento contínuo ao redor do target
+                local orbitSpeed    = Options.RbOrbitSpeed   and Options.RbOrbitSpeed.Value   or 8
+                local orbitRadius   = Options.RbOrbitRadius  and Options.RbOrbitRadius.Value  or 15
+                local orbitHeight   = Options.RbOrbitHeight  and Options.RbOrbitHeight.Value  or 3
+                _G.rb_orbitAngle = (_G.rb_orbitAngle or 0) + orbitSpeed * dt
+                local ox = math.cos(_G.rb_orbitAngle) * orbitRadius
+                local oz = math.sin(_G.rb_orbitAngle) * orbitRadius
+                local oy = math.sin(_G.rb_orbitAngle * 2.5) * orbitHeight
+                local orbitPos = tPos + Vector3.new(ox, oy, oz)
                 if ragebotrandomrotationactive then
-                    RootPart.CFrame=CFrame.new(tPos+Vector3.new(math.random(-20,20),math.random(-20,20),math.random(-20,20)))
-                        *CFrame.Angles(math.rad(math.random(0,360)),math.rad(math.random(0,360)),math.rad(math.random(0,360)))
+                    RootPart.CFrame = CFrame.new(orbitPos)
+                        * CFrame.Angles(math.rad(math.random(0,360)), math.rad(math.random(0,360)), math.rad(math.random(0,360)))
                 else
-                    RootPart.CFrame=CFrame.lookAt(tPos+Vector3.new(math.random(-20,20),math.random(-20,20),math.random(-20,20)),tPos)
+                    RootPart.CFrame = CFrame.lookAt(orbitPos, tPos)
                 end
             else
-                RootPart.CFrame=CFrame.lookAt(tPos+Vector3.new(math.random(-20,20),math.random(-20,20),math.random(-20,20)),tPos)
+                -- Sem Random TP: órbita padrão rápida
+                local orbitSpeed  = Options.RbOrbitSpeed  and Options.RbOrbitSpeed.Value  or 8
+                local orbitRadius = Options.RbOrbitRadius and Options.RbOrbitRadius.Value or 15
+                local orbitHeight = Options.RbOrbitHeight and Options.RbOrbitHeight.Value or 3
+                _G.rb_orbitAngle = (_G.rb_orbitAngle or 0) + orbitSpeed * dt
+                local ox = math.cos(_G.rb_orbitAngle) * orbitRadius
+                local oz = math.sin(_G.rb_orbitAngle) * orbitRadius
+                local oy = math.sin(_G.rb_orbitAngle * 2.5) * orbitHeight
+                RootPart.CFrame = CFrame.lookAt(tPos + Vector3.new(ox, oy, oz), tPos)
             end
         end
     end)
