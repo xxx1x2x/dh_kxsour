@@ -1186,7 +1186,7 @@ do
 
     local SilentGroup = Tabs.Aimbot:AddRightGroupbox("Silent Aim")
     SilentGroup:AddToggle("EnableSilent",      {Text="Enable Silent Aim", Default=false})
-    SilentGroup:AddSlider("SilentFOV",         {Text="Silent FOV",        Default=150, Min=20, Max=500, Rounding=0})
+    SilentGroup:AddSlider("SilentFOV",         {Text="Silent FOV",        Default=150, Min=20, Max=1000, Rounding=0})
     SilentGroup:AddToggle("ShowSilentFOV",     {Text="Show FOV Circle",   Default=false})
     SilentGroup:AddLabel("FOV Color"):AddColorPicker("SilentFOVColor",{Default=Color3.fromRGB(255,255,255),Title="Silent FOV Color",Transparency=0})
     SilentGroup:AddToggle("SilentKOCheck",     {Text="K.O Check",         Default=false})
