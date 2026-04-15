@@ -1011,9 +1011,7 @@ do
             player.CharacterAdded:Connect(function()
                 OriginalHeadSizes[player.UserId] = nil
                 task.wait(0.1)
-                if HitboxSettings.Enabled then
-                    applyHitbox(player)
-                end
+                if HitboxSettings.Enabled then applyHitbox(player) end
             end)
         end
     end
@@ -1022,9 +1020,7 @@ do
         player.CharacterAdded:Connect(function()
             OriginalHeadSizes[player.UserId] = nil
             task.wait(0.1)
-            if HitboxSettings.Enabled then
-                applyHitbox(player)
-            end
+            if HitboxSettings.Enabled then applyHitbox(player) end
         end)
     end)
 
@@ -1184,6 +1180,28 @@ do
         GunHandler.getAim = OriginalGetAim
     end
 
+    local SilentTracerLine = Drawing.new("Line")
+    SilentTracerLine.Thickness = 1
+    SilentTracerLine.Color = Color3.fromRGB(255,255,255)
+    SilentTracerLine.Transparency = 1
+    SilentTracerLine.Visible = false
+
+    RunService.RenderStepped:Connect(function()
+        if SilentAimSettings.Enabled and Toggles.SilentTracerToggle and Toggles.SilentTracerToggle.Value then
+            local target = GetNearestPlayerSilent()
+            if target then
+                local headPos, onScreen = Camera:WorldToViewportPoint(target.Position)
+                if onScreen then
+                    SilentTracerLine.From = UserInputService:GetMouseLocation()
+                    SilentTracerLine.To = Vector2.new(headPos.X, headPos.Y)
+                    SilentTracerLine.Visible = true
+                    return
+                end
+            end
+        end
+        SilentTracerLine.Visible = false
+    end)
+
     local SilentGroup = Tabs.Aimbot:AddRightGroupbox("Silent Aim")
     SilentGroup:AddToggle("EnableSilent",      {Text="Enable Silent Aim", Default=false})
     SilentGroup:AddSlider("SilentFOV",         {Text="Silent FOV",        Default=150, Min=20, Max=1000, Rounding=0})
@@ -1191,6 +1209,8 @@ do
     SilentGroup:AddLabel("FOV Color"):AddColorPicker("SilentFOVColor",{Default=Color3.fromRGB(255,255,255),Title="Silent FOV Color",Transparency=0})
     SilentGroup:AddToggle("SilentKOCheck",     {Text="K.O Check",         Default=false})
     SilentGroup:AddDropdown("SilentTargetPart",{Values={"Head","HumanoidRootPart","UpperTorso"}, Default=1, Multi=false, Text="Target Part"})
+    SilentGroup:AddToggle("SilentTracerToggle",{Text="Tracer",             Default=false})
+    SilentGroup:AddLabel("Tracer Color"):AddColorPicker("SilentTracerColor",{Default=Color3.fromRGB(255,255,255),Title="Tracer Color",Transparency=0})
     Toggles.EnableSilent:OnChanged(function()
         SilentAimSettings.Enabled = Toggles.EnableSilent.Value
         if SilentAimSettings.Enabled then applyGunHandlerHook() else removeGunHandlerHook() end
@@ -1200,6 +1220,7 @@ do
     Options.SilentFOVColor:OnChanged(function()   SilentAimSettings.FOVColor  = Options.SilentFOVColor.Value end)
     Toggles.SilentKOCheck:OnChanged(function()    SilentAimSettings.KOCheck   = Toggles.SilentKOCheck.Value end)
     Options.SilentTargetPart:OnChanged(function() SilentAimSettings.TargetPart = Options.SilentTargetPart.Value end)
+    Options.SilentTracerColor:OnChanged(function() SilentTracerLine.Color      = Options.SilentTracerColor.Value end)
 
     local multigunkeybind = false
     local availableGuns = {"[Rifle]","[AUG]","[LMG]","[Flintlock]","[AK47]","[P90]","[DrumGun]","[Double-Barrel SG]","[Deagle]"}
@@ -2035,6 +2056,7 @@ do
 
     MiscGroup:AddToggle("EnableAntiSlow",  {Text="Anti Slow",        Default=false})
     MiscGroup:AddToggle("EnableNoClip",    {Text="No Clip",          Default=false})
+    MiscGroup:AddToggle("AntiCollision",   {Text="Anti Collision",   Default=false})
     MiscGroup:AddToggle("AutoSilentReload",{Text="Auto Reload",      Default=false})
     MiscGroup:AddToggle("HideCrosshairToggle", {Text="Hide Crosshair", Default=false})
     MiscGroup:AddToggle("AntiFlingToggle", {Text="Anti Fling",       Default=false})
@@ -2097,6 +2119,22 @@ do
             for _, p in pairs(LocalPlayer.Character:GetChildren()) do
                 if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then p.CanCollide = true end
             end
+        end
+    end)
+
+    local antiCollisionConn
+    Toggles.AntiCollision:OnChanged(function()
+        if antiCollisionConn then antiCollisionConn:Disconnect() antiCollisionConn = nil end
+        if Toggles.AntiCollision.Value then
+            antiCollisionConn = RunService.Stepped:Connect(function()
+                for _, plr in pairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer and plr.Character then
+                        for _, part in pairs(plr.Character:GetDescendants()) do
+                            if part:IsA("BasePart") then part.CanCollide = false end
+                        end
+                    end
+                end
+            end)
         end
     end)
     Toggles.AntiFlingToggle:OnChanged(function() ToggleAntiFling(Toggles.AntiFlingToggle.Value) end)
