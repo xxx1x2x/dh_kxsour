@@ -786,7 +786,6 @@ local function MakeDraggableSquareBtn(label, _bgColor, pos)
 end
 
 
-
 local AimbotSettings = {
     Enabled=false, FOV=200, ShowFOV=false, FOVColor=Color3.fromRGB(189,172,255),
     Smoothness=0.15, TargetPart="Head", Sticky=false, StickyTarget=nil,
@@ -2336,5 +2335,455 @@ do
 end
 
 
-task.wait(0.5)
-Library:Notify("KraviX Mobile loaded!", "success")
+do
+    local TabRagebot = Library:Tab("Ragebot", "RAGE")
+
+    local ragebottargets              = {}
+    local lockedTarget                = nil
+    local ragebotactive               = false
+    local ragebotenabled              = false
+    local ragebotstompactive          = false
+    local ragebotrandomtpactive       = false
+    local ragebotrandomrotationactive = false
+    local ragebotviewactive           = false
+    local ragebotNotificationsEnabled = false
+    local killCount                   = 0
+    local deathCount                  = 0
+    local lastKilledTarget            = nil
+    local lastMyKOState               = false
+
+    _G.rb_currentTargetIndex = 1
+    _G.rb_shouldSwitch        = false
+    _G.rb_smoothedTargetPos   = nil
+    _G.rb_canrun              = true
+    _G.rb_isInCombat          = false
+    _G.rb_originalPosition    = nil
+    _G.rb_teleporting         = false
+    _G.rb_voiding             = false
+    _G.rb_lockedTargetUserId  = nil
+    _G.rb_lastKnownTargetPos  = nil
+
+    local function resetRagebot()
+        ragebotactive           = false
+        lockedTarget            = nil
+        _G.rb_shouldSwitch      = false
+        _G.rb_isInCombat        = false
+        _G.rb_voiding           = false
+        _G.rb_teleporting       = false
+        local char = LocalPlayer.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp and _G.rb_originalPosition then hrp.CFrame = _G.rb_originalPosition end
+            if hrp then
+                hrp.Anchored = false
+                hrp.AssemblyLinearVelocity  = Vector3.new(0,0,0)
+                hrp.AssemblyAngularVelocity = Vector3.new(0,0,0)
+            end
+            local animate = char:FindFirstChild("Animate")
+            if animate then animate.Disabled = false end
+            local hum = char:FindFirstChild("Humanoid")
+            if hum then hum.AutoRotate = true end
+        end
+        _G.rb_originalPosition = nil
+        workspace.CurrentCamera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+        if ragebotNotificationsEnabled then killCount = 0; deathCount = 0; lastKilledTarget = nil end
+    end
+
+    local secRB = TabRagebot:Group("Ragebot")
+
+    secRB:Toggle({Name="Enabled", Callback=function(v)
+        ragebotenabled = v
+        if not v then resetRagebot() end
+    end})
+
+    secRB:MultiDropdown({
+        Name="Target Players",
+        Options=(function()
+            local names = {}
+            for _,p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer then table.insert(names, p.Name) end
+            end
+            return names
+        end)(),
+        Callback=function(selected)
+            ragebottargets = {}
+            for name, sel in pairs(selected) do
+                if sel then
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= LocalPlayer and (p.Name == name or p.DisplayName == name) then
+                            table.insert(ragebottargets, p)
+                            break
+                        end
+                    end
+                end
+            end
+            _G.rb_currentTargetIndex = 1
+            if lockedTarget then
+                local stillSelected = false
+                for _, p in ipairs(ragebottargets) do
+                    if p == lockedTarget then stillSelected = true; break end
+                end
+                if not stillSelected then lockedTarget = nil; _G.rb_shouldSwitch = true end
+            end
+        end
+    })
+
+    task.spawn(function()
+        while true do
+            task.wait(2)
+            if #ragebottargets > 0 then
+                local stillValid = {}
+                for _, p in ipairs(ragebottargets) do
+                    if p and p.Parent then table.insert(stillValid, p) end
+                end
+                ragebottargets = stillValid
+            end
+        end
+    end)
+
+    secRB:Button({Name="Refresh Player List", Callback=function()
+        Library:Notify("Reopen the dropdown to see updated players.", "success")
+    end})
+
+    secRB:Separator()
+    secRB:Toggle({Name="Stomp",           Callback=function(v) ragebotstompactive          = v end})
+    secRB:Toggle({Name="Random TP",       Callback=function(v) ragebotrandomtpactive       = v end})
+    secRB:Toggle({Name="Random Rotation", Callback=function(v) ragebotrandomrotationactive = v end})
+    secRB:Toggle({Name="View",            Callback=function(v)
+        ragebotviewactive = v
+        if not v then workspace.CurrentCamera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") end
+    end})
+    secRB:Separator()
+    secRB:Toggle({Name="Kill/Death Notifications", Callback=function(v)
+        ragebotNotificationsEnabled = v
+        if not v then killCount = 0; deathCount = 0; lastKilledTarget = nil end
+    end})
+    secRB:Separator()
+    secRB:Label({Text="Tap RAGE btn to start/stop."})
+    secRB:Label({Text="Enable Silent Aim to kill."})
+
+    local _rageBtn, _rageIsClick = MakeDraggableSquareBtn("RAGE", nil, UDim2.new(0, 20, 0.5, 80))
+
+    RunService.RenderStepped:Connect(function()
+        local stroke = _rageBtn:FindFirstChildOfClass("UIStroke")
+        if not ragebotenabled then
+            _rageBtn.BackgroundColor3 = _FLOAT_BG
+            _rageBtn.TextColor3 = Color3.fromRGB(120,120,120)
+            if stroke then stroke.Color = Color3.fromRGB(80,80,80) end
+        elseif ragebotactive then
+            _rageBtn.BackgroundColor3 = Color3.fromRGB(150,50,255)
+            _rageBtn.TextColor3 = Color3.fromRGB(255,255,255)
+            if stroke then stroke.Color = Color3.fromRGB(220,180,255) end
+        else
+            _rageBtn.BackgroundColor3 = _FLOAT_BG
+            _rageBtn.TextColor3 = _FLOAT_TEXT
+            if stroke then stroke.Color = _FLOAT_BORDER end
+        end
+    end)
+
+    _rageBtn.InputEnded:Connect(function(inp)
+        if (inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseButton1) and _rageIsClick() then
+            if not ragebotenabled then return end
+            ragebotactive = not ragebotactive
+            if ragebotactive then
+                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    _G.rb_originalPosition = LocalPlayer.Character.HumanoidRootPart.CFrame
+                end
+                _G.rb_shouldSwitch = true
+                Library:Notify("Ragebot started!", "success")
+            else
+                resetRagebot()
+                Library:Notify("Ragebot stopped.", "warning")
+            end
+        end
+    end)
+
+    local playerGui    = LocalPlayer:WaitForChild("PlayerGui")
+    local statusGui    = Instance.new("ScreenGui")
+    statusGui.Name     = "RagebotStatusGui"
+    statusGui.ResetOnSpawn = false
+    statusGui.Parent   = playerGui
+    local messageLabel = Instance.new("TextLabel")
+    messageLabel.BackgroundTransparency = 1
+    messageLabel.Size                   = UDim2.new(1,0,0,30)
+    messageLabel.Position               = UDim2.new(0,0,0.5,0)
+    messageLabel.AnchorPoint            = Vector2.new(0,0.5)
+    messageLabel.Font                   = 2
+    messageLabel.TextSize               = 13
+    messageLabel.TextXAlignment         = Enum.TextXAlignment.Center
+    messageLabel.TextColor3             = Color3.fromRGB(255,255,255)
+    messageLabel.TextStrokeColor3       = Color3.fromRGB(0,0,0)
+    messageLabel.TextStrokeTransparency = 0
+    messageLabel.Text                   = ""
+    messageLabel.Parent                 = statusGui
+
+    local function reloadTool()
+        local char = LocalPlayer.Character
+        if not char then return end
+        for _, tool in ipairs(char:GetChildren()) do
+            if tool:IsA("Tool") and tool:FindFirstChild("Ammo") and tool.Ammo.Value <= 0 then
+                pcall(function() MainEvent:FireServer("Reload", tool) end)
+            end
+        end
+    end
+
+    local _PlayersRef  = cloneref(game:GetService("Players"))
+    local _LocalClient = _PlayersRef.LocalPlayer
+
+    RunService.RenderStepped:Connect(function()
+        for _, plr in pairs(_PlayersRef:GetPlayers()) do
+            if plr ~= _LocalClient then
+                local char = plr.Character
+                if char then
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        if ragebotactive and _G.rb_teleporting then
+                            hrp.Size = Vector3.new(20,20,20); hrp.CanCollide = false
+                        else
+                            hrp.Size = Vector3.new(2,2,1); hrp.CanCollide = true
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    task.spawn(function()
+        while true do
+            if ragebotactive and _G.rb_voiding then
+                local char = LocalPlayer.Character
+                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.CFrame = CFrame.new(math.random(-999999,999999), math.random(0,999999), math.random(-999999,999999)) end
+            end
+            task.wait()
+        end
+    end)
+
+    task.spawn(function()
+        while true do
+            if ragebotactive and _G.rb_teleporting and lockedTarget and lockedTarget.Character then
+                local tHRP = lockedTarget.Character:FindFirstChild("HumanoidRootPart")
+                local pHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if tHRP and pHRP then
+                    pHRP.CFrame = CFrame.lookAt(tHRP.Position + Vector3.new(math.random(-20,20),math.random(-20,20),math.random(-20,20)), tHRP.Position)
+                end
+            end
+            task.wait()
+        end
+    end)
+
+    task.spawn(function()
+        while true do
+            local char = LocalPlayer.Character
+            if char then
+                local be    = char:FindFirstChild("BodyEffects")
+                local koVal = be and be:FindFirstChild("K.O")
+                if ragebotactive and koVal and koVal.Value == true then
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum then hum.Health = 0 end
+                end
+            end
+            task.wait()
+        end
+    end)
+
+    task.spawn(function()
+        while true do
+            if ragebotNotificationsEnabled then
+                local char = LocalPlayer.Character
+                if char then
+                    local be = char:FindFirstChild("BodyEffects")
+                    local ko = be and be:FindFirstChild("K.O")
+                    if ko then
+                        if ko.Value and not lastMyKOState then
+                            deathCount = deathCount + 1
+                            Library:Notify(string.format("DEATH  [%d / %d]", killCount, deathCount), "warning")
+                        end
+                        lastMyKOState = ko.Value
+                    end
+                end
+            end
+            task.wait(0.1)
+        end
+    end)
+
+    RunService.Heartbeat:Connect(function()
+        if not ragebotactive then
+            messageLabel.Text = ""
+            _G.rb_isInCombat  = false
+            if not ragebotviewactive then
+                workspace.CurrentCamera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+            end
+            return
+        end
+
+        local Character = LocalPlayer.Character
+        local RootPart  = Character and Character:FindFirstChild("HumanoidRootPart")
+        if not RootPart then return end
+
+        local BodyEffects = Character:FindFirstChild("BodyEffects")
+        local isReloading = BodyEffects and BodyEffects:FindFirstChild("Reload") and BodyEffects.Reload.Value
+        if isReloading then
+            messageLabel.Text = "reloading... (void)"
+            _G.rb_voiding = true; _G.rb_teleporting = false
+            reloadTool()
+            if not ragebotviewactive then workspace.CurrentCamera.CameraSubject = Character:FindFirstChild("Humanoid") end
+            return
+        end
+
+        if not lockedTarget and _G.rb_lockedTargetUserId then
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr.UserId == _G.rb_lockedTargetUserId then lockedTarget = plr; break end
+            end
+        end
+
+        if not lockedTarget or _G.rb_shouldSwitch then
+            lockedTarget = nil; _G.rb_shouldSwitch = false; _G.rb_lockedTargetUserId = nil
+
+            if #ragebottargets > 0 then
+                for attempt = 1, #ragebottargets do
+                    _G.rb_currentTargetIndex = (_G.rb_currentTargetIndex % #ragebottargets) + 1
+                    local candidate = ragebottargets[_G.rb_currentTargetIndex]
+                    if candidate and candidate.Character then
+                        local be  = candidate.Character:FindFirstChild("BodyEffects")
+                        local hum = candidate.Character:FindFirstChild("Humanoid")
+                        local gra = candidate.Character:FindFirstChild("GRABBING_CONSTRAINT")
+                        if be and hum and hum.Health > 0 and not gra then
+                            local sd = be:FindFirstChild("SDeath") and be["SDeath"].Value
+                            if not sd then lockedTarget = candidate; break end
+                        end
+                    end
+                end
+            else
+                local closestDist = math.huge
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer and plr.Character then
+                        local tHRP = plr.Character:FindFirstChild("HumanoidRootPart")
+                        local tHum = plr.Character:FindFirstChild("Humanoid")
+                        local be   = plr.Character:FindFirstChild("BodyEffects")
+                        local gra  = plr.Character:FindFirstChild("GRABBING_CONSTRAINT")
+                        if tHRP and tHum and tHum.Health > 0 and be and not gra then
+                            local isKO2 = be:FindFirstChild("K.O") and be["K.O"].Value
+                            local sd    = be:FindFirstChild("SDeath") and be["SDeath"].Value
+                            if not sd then
+                                local dist = (tHRP.Position - RootPart.Position).Magnitude
+                                local eff  = isKO2 and (dist + 10000) or dist
+                                if eff < closestDist then closestDist = eff; lockedTarget = plr end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        if not lockedTarget or not lockedTarget.Character then
+            if lockedTarget and not lockedTarget:IsDescendantOf(game) then
+                _G.rb_lockedTargetUserId = nil; lockedTarget = nil; _G.rb_shouldSwitch = true
+            end
+            messageLabel.Text = "no target... (void)"
+            _G.rb_isInCombat  = false; _G.rb_voiding = true; _G.rb_teleporting = false
+            reloadTool()
+            workspace.CurrentCamera.CameraSubject = Character:FindFirstChild("Humanoid")
+            return
+        end
+
+        if lockedTarget then _G.rb_lockedTargetUserId = lockedTarget.UserId end
+
+        local TargetChar = lockedTarget.Character
+        if not TargetChar then
+            messageLabel.Text = "killing (no stream): " .. lockedTarget.Name
+            _G.rb_isInCombat  = true; _G.rb_voiding = false; _G.rb_teleporting = true
+            if _G.rb_lockedTargetUserId then
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr.UserId == _G.rb_lockedTargetUserId and plr.Character then lockedTarget = plr; break end
+                end
+            end
+            return
+        end
+
+        local TargetRoot = TargetChar:FindFirstChild("HumanoidRootPart")
+        local UpperTorso = TargetChar:FindFirstChild("UpperTorso")
+        local TargetBE   = TargetChar:FindFirstChild("BodyEffects")
+        local TargetHum  = TargetChar:FindFirstChild("Humanoid")
+        local TargetFF   = TargetChar:FindFirstChildOfClass("ForceField")
+
+        if TargetRoot then _G.rb_lastKnownTargetPos = TargetRoot.Position end
+        if not TargetRoot or not TargetHum or TargetHum.Health <= 0 then
+            _G.rb_shouldSwitch = true; _G.rb_isInCombat = false; return
+        end
+
+        local isKO = TargetBE and TargetBE:FindFirstChild("K.O")    and TargetBE["K.O"].Value
+        local isSD = TargetBE and TargetBE:FindFirstChild("SDeath") and TargetBE["SDeath"].Value
+
+        if isKO and ragebotNotificationsEnabled and lastKilledTarget ~= lockedTarget.UserId then
+            killCount = killCount + 1; lastKilledTarget = lockedTarget.UserId
+            Library:Notify(string.format("KILL  %s  [%d / %d]", lockedTarget.Name, killCount, deathCount), "success")
+        end
+
+        if isSD then
+            messageLabel.Text = "target dead... (switching)"
+            _G.rb_isInCombat  = false; _G.rb_shouldSwitch = true
+            lockedTarget = nil; _G.rb_smoothedTargetPos = nil
+            _G.rb_voiding = true; _G.rb_teleporting = false
+            reloadTool(); return
+        end
+
+        if TargetFF then
+            messageLabel.Text = "waiting FF... (void)"
+            _G.rb_isInCombat  = false; _G.rb_voiding = true; _G.rb_teleporting = false
+            reloadTool()
+            if ragebotviewactive then workspace.CurrentCamera.CameraSubject = UpperTorso or TargetHum
+            else workspace.CurrentCamera.CameraSubject = Character:FindFirstChild("Humanoid") end
+            return
+        end
+
+        _G.rb_isInCombat  = true; _G.rb_voiding = false; _G.rb_teleporting = true
+
+        if ragebotviewactive then workspace.CurrentCamera.CameraSubject = UpperTorso or TargetHum
+        else workspace.CurrentCamera.CameraSubject = Character:FindFirstChild("Humanoid") end
+
+        if isKO and UpperTorso and ragebotstompactive and _G.rb_canrun then
+            messageLabel.Text = "stomping: " .. lockedTarget.Name
+            _G.rb_teleporting = false; _G.rb_voiding = false
+            RootPart.Velocity = Vector3.zero; RootPart.RotVelocity = Vector3.zero
+            RootPart.AssemblyLinearVelocity  = Vector3.zero
+            RootPart.AssemblyAngularVelocity = Vector3.zero
+            RootPart.CFrame = CFrame.new(UpperTorso.Position + Vector3.new(0,3.5,0))
+            task.wait(0.1)
+            pcall(function() MainEvent:FireServer("Stomp") end)
+            _G.rb_voiding = true; _G.rb_teleporting = false
+            messageLabel.Text = "waiting FF after stomp... (void)"
+            task.spawn(function()
+                local elapsed = 0
+                while elapsed < 30 do
+                    task.wait(0.3); elapsed = elapsed + 0.3
+                    if not lockedTarget then break end
+                    local tC = lockedTarget.Character
+                    if not tC then _G.rb_shouldSwitch = true; _G.rb_voiding = true; _G.rb_teleporting = false; break end
+                    local tBE2  = tC:FindFirstChild("BodyEffects")
+                    local isSD2 = tBE2 and tBE2:FindFirstChild("SDeath") and tBE2["SDeath"].Value
+                    if isSD2 then _G.rb_shouldSwitch = true; _G.rb_voiding = true; _G.rb_teleporting = false; break end
+                    local ff = tC:FindFirstChildOfClass("ForceField")
+                    if not ff then _G.rb_voiding = false; _G.rb_teleporting = true; break end
+                end
+            end)
+            return
+        end
+
+        if not isKO and _G.rb_canrun then
+            messageLabel.Text = "killing: " .. lockedTarget.Name
+            local tPos = TargetRoot.Position
+            _G.rb_smoothedTargetPos = nil
+            if ragebotrandomtpactive then
+                if ragebotrandomrotationactive then
+                    RootPart.CFrame = CFrame.new(tPos + Vector3.new(math.random(-20,20),math.random(-20,20),math.random(-20,20)))
+                        * CFrame.Angles(math.rad(math.random(0,360)),math.rad(math.random(0,360)),math.rad(math.random(0,360)))
+                else
+                    RootPart.CFrame = CFrame.lookAt(tPos + Vector3.new(math.random(-20,20),math.random(-20,20),math.random(-20,20)), tPos)
+                end
+            else
+                RootPart.CFrame = CFrame.lookAt(tPos + Vector3.new(math.random(-20,20),math.random(-20,20),math.random(-20,20)), tPos)
+            end
+        end
+    end)
+end
