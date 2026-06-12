@@ -328,6 +328,9 @@ do
     ESPGroupRight:AddLabel('Chams Color'):AddColorPicker('ESPChamsColor',{Default=Color3.fromRGB(255,255,255), Title='Chams Color'})
     ESPGroupRight:AddSlider('ESPChamsTrans',   {Text='Chams Transparency', Default=0.5, Min=0, Max=1, Rounding=2})
     ESPGroupRight:AddDropdown('ESPChamsMat',   {Values={'Neon','ForceField','Glass','Plastic','Metal'}, Default=1, Multi=false, Text='Chams Material'})
+    ESPGroupRight:AddDivider()
+    ESPGroupRight:AddToggle('ESPOutline',      {Text='Outline',      Default=false})
+    ESPGroupRight:AddLabel('Outline Color'):AddColorPicker('ESPOutlineColor',{Default=Color3.fromRGB(0,0,0), Title='Outline Color'})
 
     local esp = (function()
         local ESP = {}
@@ -363,6 +366,8 @@ do
         local chamsColor = Color3.fromRGB(255,255,255)
         local chamsMaterial = Enum.Material.Neon
         local chamsTransparency = 0.5
+        local outlineEnabled = false
+        local outlineColor = Color3.fromRGB(0,0,0)
         local espFolder = Instance.new('Folder')
         espFolder.Name = 'SymbolESP'
         espFolder.Parent = workspace
@@ -526,6 +531,7 @@ do
                 d.box.right.From=Vector2.new(right,top)    d.box.right.To=Vector2.new(right,bottom)
                 for _,b in pairs({d.box.top,d.box.bottom,d.box.left,d.box.right}) do
                     b.Color=boxColor b.Transparency=1 b.Visible=true
+                    if outlineEnabled then b.Thickness=3 else b.Thickness=1 end
                 end
                 if boxFill then
                     d.box.fill.PointA=Vector2.new(left,top)   d.box.fill.PointB=Vector2.new(right,top)
@@ -652,6 +658,8 @@ do
             chamsMaterial=mats[m] or Enum.Material.Neon
         end
         function ESP:setChamsTransparency(t) chamsTransparency=t end
+        function ESP:setOutlineEnabled(v) outlineEnabled=v end
+        function ESP:setOutlineColor(c) outlineColor=c end
         return ESP
     end)()
 
@@ -681,6 +689,8 @@ do
     Options.ESPChamsColor:OnChanged(function()   esp:setChamsColor(Options.ESPChamsColor.Value) end)
     Options.ESPChamsTrans:OnChanged(function()   esp:setChamsTransparency(Options.ESPChamsTrans.Value) end)
     Options.ESPChamsMat:OnChanged(function()     esp:setChamsMaterial(Options.ESPChamsMat.Value) end)
+    Toggles.ESPOutline:OnChanged(function()      esp:setOutlineEnabled(Toggles.ESPOutline.Value) end)
+    Options.ESPOutlineColor:OnChanged(function() esp:setOutlineColor(Options.ESPOutlineColor.Value) end)
 end
 
 
@@ -1008,46 +1018,62 @@ do
     Toggles.EnableRapidFire:OnChanged(function() getgenv().config.enable = Toggles.EnableRapidFire.Value end)
     Toggles.EnableBulletTP:OnChanged(function()  BulletTPSettings.Enabled = Toggles.EnableBulletTP.Value end)
 
-    local SilentAimSettings = { Enabled=false, KOCheck=false, TargetPart="Head" }
+    local SilentAimSettings = { Enabled=false, KOCheck=false, TargetPart="Head", ShowFOV=false, FOVColor=Color3.fromRGB(255,255,255) }
 
     local GunHandler = require(ReplicatedStorage.Modules.GunHandler)
     local OriginalGetAim = GunHandler.getAim
 
     local function GetNearestPlayerSilent()
-        local Distance = math.huge
-        local Target = nil
+        local best, target = math.huge, nil
+        local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
         for _, plr in pairs(Players:GetPlayers()) do
-            if plr == LocalPlayer or not plr.Character or not plr.Character:FindFirstChild(SilentAimSettings.TargetPart) then continue end
+            if plr == LocalPlayer or not plr.Character then continue end
+            local part = plr.Character:FindFirstChild(SilentAimSettings.TargetPart)
+            if not part then continue end
+            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+            if not hum or hum.Health <= 0 then continue end
             local be = plr.Character:FindFirstChild("BodyEffects")
             local ko = be and be:FindFirstChild("K.O") and be["K.O"].Value
             if SilentAimSettings.KOCheck and ko then continue end
-            local Position, OnScreen = Camera:WorldToViewportPoint(plr.Character:FindFirstChild(SilentAimSettings.TargetPart).Position)
-            local Magnitude = (Vector2.new(Position.X, Position.Y) - UserInputService:GetMouseLocation()).Magnitude
-            if OnScreen and Magnitude <= Distance and Magnitude <= 1000 then
-                Distance = Magnitude
-                Target = plr.Character:FindFirstChild(SilentAimSettings.TargetPart)
+            local sp, on = Camera:WorldToViewportPoint(part.Position)
+            if not on or sp.Z <= 0 then continue end
+            local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+            if d <= (SilentAimSettings.FOV or 150) and d < best then
+                best = d
+                target = part
             end
         end
-        return Target
+        return target
     end
 
     local function GetNearestPlayerTracer()
-        local Distance = math.huge
-        local Target = nil
+        local best, target = math.huge, nil
+        local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
         for _, plr in pairs(Players:GetPlayers()) do
-            if plr == LocalPlayer or not plr.Character or not plr.Character:FindFirstChild(SilentAimSettings.TargetPart) then continue end
+            if plr == LocalPlayer or not plr.Character then continue end
+            local part = plr.Character:FindFirstChild(SilentAimSettings.TargetPart)
+            if not part then continue end
+            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+            if not hum or hum.Health <= 0 then continue end
             local be = plr.Character:FindFirstChild("BodyEffects")
             local ko = be and be:FindFirstChild("K.O") and be["K.O"].Value
             if SilentAimSettings.KOCheck and ko then continue end
-            local Position, OnScreen = Camera:WorldToViewportPoint(plr.Character:FindFirstChild(SilentAimSettings.TargetPart).Position)
-            local Magnitude = (Vector2.new(Position.X, Position.Y) - UserInputService:GetMouseLocation()).Magnitude
-            if OnScreen and Magnitude <= Distance and Magnitude <= 1000 then
-                Distance = Magnitude
-                Target = plr.Character:FindFirstChild(SilentAimSettings.TargetPart)
+            local sp, on = Camera:WorldToViewportPoint(part.Position)
+            if not on or sp.Z <= 0 then continue end
+            local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+            if d <= (SilentAimSettings.FOV or 150) and d < best then
+                best = d
+                target = part
             end
         end
-        return Target
+        return target
     end
+
+    local SilentCircle = Drawing.new("Circle")
+    SilentCircle.Thickness = 2
+    SilentCircle.NumSides = 64
+    SilentCircle.Filled = false
+    SilentCircle.Visible = false
 
     local SilentTracer = Drawing.new("Line")
     SilentTracer.Thickness = 1
@@ -1056,6 +1082,11 @@ do
     SilentTracer.Visible = false
 
     RunService.RenderStepped:Connect(function()
+        local sc = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+        SilentCircle.Position = sc
+        SilentCircle.Radius = SilentAimSettings.FOV or 150
+        SilentCircle.Color = SilentAimSettings.FOVColor
+        SilentCircle.Visible = SilentAimSettings.ShowFOV and SilentAimSettings.Enabled
         if SilentAimSettings.Enabled and Toggles.SilentTracer and Toggles.SilentTracer.Value then
             local target = GetNearestPlayerTracer()
             if target then
@@ -1077,18 +1108,10 @@ do
             if SilentAimSettings.Enabled then
                 local target = GetNearestPlayerSilent()
                 if target and target.Parent then
-                    local dir = (target.Position - origin)
-                    if dir.Magnitude > 0.001 then
-                        local screenPos, onScreen = Camera:WorldToViewportPoint(target.Position)
-                        if onScreen and screenPos.Z > 0 then
-                            local cur = UserInputService:GetMouseLocation()
-                            pcall(mousemoverel, screenPos.X - cur.X, screenPos.Y - cur.Y)
-                        end
-                        return dir.Unit, range
-                    end
+                    local dir = target.Position - origin
+                    if dir.Magnitude > 0.001 then return dir.Unit, range end
                 end
             end
-            -- fallback seguro: usa direção da câmera se OriginalGetAim falhar
             local ok, a, b = pcall(OriginalGetAim, origin, range)
             if ok and a then return a, b end
             return Camera.CFrame.LookVector, range
@@ -1101,9 +1124,13 @@ do
     local SilentGroup = Tabs.Aimbot:AddRightGroupbox("Silent Aim")
     SilentGroup:AddToggle("EnableSilent",  {Text="Enable Silent Aim", Default=false})
     SilentGroup:AddToggle("SilentTracer",  {Text="Tracer",            Default=false})
-    SilentGroup:AddToggle("SilentKOCheck", {Text="K.O Check (Tracer)", Default=false})
+    SilentGroup:AddToggle("SilentKOCheck", {Text="K.O Check", Default=false})
     SilentGroup:AddDropdown("SilentTargetPart", {Values={"Head","HumanoidRootPart","UpperTorso"}, Default=1, Multi=false, Text="Target Part"})
     SilentGroup:AddLabel("Tracer Color"):AddColorPicker("SilentTracerColor",{Default=Color3.fromRGB(255,255,255),Title="Tracer Color",Transparency=0})
+    SilentGroup:AddDivider()
+    SilentGroup:AddToggle("SilentShowFOV", {Text="Show FOV Circle", Default=false})
+    SilentGroup:AddSlider("SilentFOVSize", {Text="FOV Size", Default=150, Min=20, Max=1000, Rounding=0})
+    SilentGroup:AddLabel("FOV Color"):AddColorPicker("SilentFOVColor",{Default=Color3.fromRGB(255,255,255),Title="FOV Color",Transparency=0})
     Toggles.EnableSilent:OnChanged(function()
         SilentAimSettings.Enabled = Toggles.EnableSilent.Value
         if SilentAimSettings.Enabled then applyGunHandlerHook() else removeGunHandlerHook() end
@@ -1111,6 +1138,9 @@ do
     Toggles.SilentKOCheck:OnChanged(function() SilentAimSettings.KOCheck = Toggles.SilentKOCheck.Value end)
     Options.SilentTargetPart:OnChanged(function() SilentAimSettings.TargetPart = Options.SilentTargetPart.Value end)
     Options.SilentTracerColor:OnChanged(function() SilentTracer.Color = Options.SilentTracerColor.Value end)
+    Toggles.SilentShowFOV:OnChanged(function() SilentAimSettings.ShowFOV = Toggles.SilentShowFOV.Value end)
+    Options.SilentFOVSize:OnChanged(function() SilentAimSettings.FOV = Options.SilentFOVSize.Value end)
+    Options.SilentFOVColor:OnChanged(function() SilentAimSettings.FOVColor = Options.SilentFOVColor.Value end)
 
     local all_items = {}
     local BuyGunGroup = Tabs.Aimbot:AddRightGroupbox('Auto Buy')
@@ -1340,23 +1370,19 @@ do
     end})
     TeleportGroup:AddToggle('ViewTargetPlayer',{Text='View Player',Default=false,
         Callback=function(en)
+            local lh = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild('Humanoid')
             if not en then
-                local lh = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild('Humanoid')
                 if lh then workspace.CurrentCamera.CameraSubject = lh end
             end
         end
     })
-    task.spawn(function()
-        while true do
-            if Toggles.ViewTargetPlayer and Toggles.ViewTargetPlayer.Value then
-                local playerName = Options.PlayerSelect and Options.PlayerSelect.Value
-                local tp = typeof(playerName) == 'string' and Players:FindFirstChild(playerName)
-                if tp and tp.Character then
-                    local hum = tp.Character:FindFirstChild('Humanoid')
-                    if hum then workspace.CurrentCamera.CameraSubject = hum end
-                end
-            end
-            task.wait(0.1)
+    RunService.Heartbeat:Connect(function()
+        if not (Toggles.ViewTargetPlayer and Toggles.ViewTargetPlayer.Value) then return end
+        local playerName = Options.PlayerSelect and Options.PlayerSelect.Value
+        local tp = typeof(playerName) == 'string' and Players:FindFirstChild(playerName)
+        if tp and tp.Character then
+            local hum = tp.Character:FindFirstChild('Humanoid')
+            if hum then workspace.CurrentCamera.CameraSubject = hum end
         end
     end)
     TeleportGroup:AddDivider()
@@ -3232,7 +3258,7 @@ do
                 RunService.RenderStepped:Wait()
                 if not ragebotactive then RootPart.CFrame=_G.rb_originalPosition or RootPart.CFrame return end
             elseif ragebotrandomtpactive then
-                -- Orbit rápida: incrementa ângulo a cada frame para movimento contínuo ao redor do target
+                
                 local orbitSpeed    = Options.RbOrbitSpeed   and Options.RbOrbitSpeed.Value   or 8
                 local orbitRadius   = Options.RbOrbitRadius  and Options.RbOrbitRadius.Value  or 15
                 local orbitHeight   = Options.RbOrbitHeight  and Options.RbOrbitHeight.Value  or 3
@@ -3248,7 +3274,7 @@ do
                     RootPart.CFrame = CFrame.lookAt(orbitPos, tPos)
                 end
             else
-                -- Sem Random TP: órbita padrão rápida
+                
                 local orbitSpeed  = Options.RbOrbitSpeed  and Options.RbOrbitSpeed.Value  or 8
                 local orbitRadius = Options.RbOrbitRadius and Options.RbOrbitRadius.Value or 15
                 local orbitHeight = Options.RbOrbitHeight and Options.RbOrbitHeight.Value or 3
