@@ -328,9 +328,6 @@ do
     ESPGroupRight:AddLabel('Chams Color'):AddColorPicker('ESPChamsColor',{Default=Color3.fromRGB(255,255,255), Title='Chams Color'})
     ESPGroupRight:AddSlider('ESPChamsTrans',   {Text='Chams Transparency', Default=0.5, Min=0, Max=1, Rounding=2})
     ESPGroupRight:AddDropdown('ESPChamsMat',   {Values={'Neon','ForceField','Glass','Plastic','Metal'}, Default=1, Multi=false, Text='Chams Material'})
-    ESPGroupRight:AddDivider()
-    ESPGroupRight:AddToggle('ESPOutline',      {Text='Outline',      Default=false})
-    ESPGroupRight:AddLabel('Outline Color'):AddColorPicker('ESPOutlineColor',{Default=Color3.fromRGB(0,0,0), Title='Outline Color'})
 
     local esp = (function()
         local ESP = {}
@@ -366,8 +363,6 @@ do
         local chamsColor = Color3.fromRGB(255,255,255)
         local chamsMaterial = Enum.Material.Neon
         local chamsTransparency = 0.5
-        local outlineEnabled = false
-        local outlineColor = Color3.fromRGB(0,0,0)
         local espFolder = Instance.new('Folder')
         espFolder.Name = 'SymbolESP'
         espFolder.Parent = workspace
@@ -531,7 +526,6 @@ do
                 d.box.right.From=Vector2.new(right,top)    d.box.right.To=Vector2.new(right,bottom)
                 for _,b in pairs({d.box.top,d.box.bottom,d.box.left,d.box.right}) do
                     b.Color=boxColor b.Transparency=1 b.Visible=true
-                    if outlineEnabled then b.Thickness=3 else b.Thickness=1 end
                 end
                 if boxFill then
                     d.box.fill.PointA=Vector2.new(left,top)   d.box.fill.PointB=Vector2.new(right,top)
@@ -658,8 +652,6 @@ do
             chamsMaterial=mats[m] or Enum.Material.Neon
         end
         function ESP:setChamsTransparency(t) chamsTransparency=t end
-        function ESP:setOutlineEnabled(v) outlineEnabled=v end
-        function ESP:setOutlineColor(c) outlineColor=c end
         return ESP
     end)()
 
@@ -689,8 +681,6 @@ do
     Options.ESPChamsColor:OnChanged(function()   esp:setChamsColor(Options.ESPChamsColor.Value) end)
     Options.ESPChamsTrans:OnChanged(function()   esp:setChamsTransparency(Options.ESPChamsTrans.Value) end)
     Options.ESPChamsMat:OnChanged(function()     esp:setChamsMaterial(Options.ESPChamsMat.Value) end)
-    Toggles.ESPOutline:OnChanged(function()      esp:setOutlineEnabled(Toggles.ESPOutline.Value) end)
-    Options.ESPOutlineColor:OnChanged(function() esp:setOutlineColor(Options.ESPOutlineColor.Value) end)
 end
 
 
@@ -1142,6 +1132,64 @@ do
     Options.SilentFOVSize:OnChanged(function() SilentAimSettings.FOV = Options.SilentFOVSize.Value end)
     Options.SilentFOVColor:OnChanged(function() SilentAimSettings.FOVColor = Options.SilentFOVColor.Value end)
 
+    local multigunkeybind = false
+    local availableGuns = {"[Rifle]","[AUG]","[LMG]","[Flintlock]","[AK47]","[P90]","[DrumGun]","[Double-Barrel SG]","[Deagle]"}
+    local gunsEnabled = {}
+    for _, gun in ipairs(availableGuns) do gunsEnabled[gun] = false end
+    local MultiGunGroup = Tabs.Aimbot:AddLeftGroupbox('Multi Gun')
+    MultiGunGroup:AddToggle('multiguntoggle', {Text='Multi Gun', Default=false,
+        Callback = function(value)
+            multigunkeybind = value
+            if not value and LocalPlayer.Character then
+                local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                if hum then hum:UnequipTools() end
+            end
+        end
+    })
+    local multigundepbox = MultiGunGroup:AddDependencyBox()
+    multigundepbox:AddDropdown('GunSelector', {Values=availableGuns, Default=1, Multi=true, Text='Weapons'})
+    Options.GunSelector:OnChanged(function()
+        for gun, sel in next, Options.GunSelector.Value do gunsEnabled[gun] = sel end
+    end)
+    multigundepbox:SetupDependencies({{Toggles.multiguntoggle, true}})
+    local isShooting = false
+    UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 and multigunkeybind then isShooting = true end
+        if input.KeyCode == Enum.KeyCode.R and multigunkeybind and LocalPlayer.Character then
+            for _, tool in pairs(LocalPlayer.Character:GetChildren()) do
+                if tool:IsA("Tool") and tool:FindFirstChild("Ammo") then
+                    task.spawn(function() ReplicatedStorage.MainEvent:FireServer("Reload", tool) end)
+                end
+            end
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then isShooting = false end
+    end)
+    task.spawn(function()
+        while true do
+            if multigunkeybind and LocalPlayer.Character then
+                local backpack = LocalPlayer:FindFirstChild("Backpack")
+                if backpack then
+                    for gunName, enabled in pairs(gunsEnabled) do
+                        if enabled then
+                            local tool = backpack:FindFirstChild(gunName)
+                            if tool then tool.Parent = LocalPlayer.Character end
+                        end
+                    end
+                end
+                if isShooting then
+                    for _, tool in pairs(LocalPlayer.Character:GetChildren()) do
+                        if tool:IsA("Tool") and gunsEnabled[tool.Name] then tool:Activate() end
+                    end
+                end
+            end
+            task.wait()
+        end
+    end)
+
+
     local all_items = {}
     local BuyGunGroup = Tabs.Aimbot:AddRightGroupbox('Auto Buy')
     local function purchaseItem(clickDetector, itemPart, ammoClickDetector, ammoPart)
@@ -1328,12 +1376,12 @@ end
 
 do
     local CharGroup = Tabs.Character:AddLeftGroupbox('Movement')
-    CharGroup:AddToggle('EnableFly',{Text='Enable Fly',Default=false}):AddKeyPicker('FlyToggle',{Default='X',SyncToggleState=true,Mode='Toggle',Text='Fly Toggle',NoUI=false})
+    CharGroup:AddToggle('EnableFly',{Text='Enable Fly',Default=false}):AddKeyPicker('FlyToggle',{Default='X',SyncToggleState=false,Mode='Toggle',Text='Fly Toggle',NoUI=false})
     CharGroup:AddSlider('FlySpeed', {Text='Fly Speed', Default=50, Min=10, Max=500, Rounding=0})
 
     local Flags = {cframeSpeedEnabled=false, cframeSpeedAmount=150}
     local SpeedGroup = Tabs.Character:AddLeftGroupbox('Speed')
-    SpeedGroup:AddToggle('CframeSpeedToggle',{Text='Toggle CFrame Speed',Default=false}):AddKeyPicker('CframeSpeedKeybind',{Default='V',SyncToggleState=true,Mode='Toggle',Text='CFrame Speed',NoUI=false})
+    SpeedGroup:AddToggle('CframeSpeedToggle',{Text='Toggle CFrame Speed',Default=false}):AddKeyPicker('CframeSpeedKeybind',{Default='V',SyncToggleState=false,Mode='Toggle',Text='CFrame Speed',NoUI=false})
     SpeedGroup:AddSlider('CframeSpeedSlider',{Text='Speed Amount',Default=150,Min=16,Max=1000,Rounding=0})
     if _G.cframeSpeedConn then _G.cframeSpeedConn:Disconnect() end
     _G.cframeSpeedConn = RunService.Heartbeat:Connect(function(dt)
@@ -1348,8 +1396,16 @@ do
     end)
     Toggles.EnableFly:OnChanged(function()        CharacterSettings.FlyEnabled = Toggles.EnableFly.Value end)
     Options.FlySpeed:OnChanged(function()          CharacterSettings.FlySpeed   = Options.FlySpeed.Value end)
+    Options.FlyToggle:OnClick(function()
+        if not Toggles.EnableFly.Value then return end
+        CharacterSettings.FlyEnabled = not CharacterSettings.FlyEnabled
+    end)
     Toggles.CframeSpeedToggle:OnChanged(function() Flags.cframeSpeedEnabled    = Toggles.CframeSpeedToggle.Value end)
     Options.CframeSpeedSlider:OnChanged(function() Flags.cframeSpeedAmount      = Options.CframeSpeedSlider.Value end)
+    Options.CframeSpeedKeybind:OnClick(function()
+        if not Toggles.CframeSpeedToggle.Value then return end
+        Flags.cframeSpeedEnabled = not Flags.cframeSpeedEnabled
+    end)
 
     local TeleportGroup = Tabs.Character:AddRightGroupbox('Teleport')
     local function refreshPlayerList()
@@ -1370,19 +1426,23 @@ do
     end})
     TeleportGroup:AddToggle('ViewTargetPlayer',{Text='View Player',Default=false,
         Callback=function(en)
-            local lh = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild('Humanoid')
             if not en then
+                local lh = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild('Humanoid')
                 if lh then workspace.CurrentCamera.CameraSubject = lh end
             end
         end
     })
-    RunService.Heartbeat:Connect(function()
-        if not (Toggles.ViewTargetPlayer and Toggles.ViewTargetPlayer.Value) then return end
-        local playerName = Options.PlayerSelect and Options.PlayerSelect.Value
-        local tp = typeof(playerName) == 'string' and Players:FindFirstChild(playerName)
-        if tp and tp.Character then
-            local hum = tp.Character:FindFirstChild('Humanoid')
-            if hum then workspace.CurrentCamera.CameraSubject = hum end
+    task.spawn(function()
+        while true do
+            if Toggles.ViewTargetPlayer and Toggles.ViewTargetPlayer.Value then
+                local playerName = Options.PlayerSelect and Options.PlayerSelect.Value
+                local tp = typeof(playerName) == 'string' and Players:FindFirstChild(playerName)
+                if tp and tp.Character then
+                    local hum = tp.Character:FindFirstChild('Humanoid')
+                    if hum then workspace.CurrentCamera.CameraSubject = hum end
+                end
+            end
+            task.wait(0.1)
         end
     end)
     TeleportGroup:AddDivider()
@@ -2315,7 +2375,6 @@ do
     MiscGroup:AddToggle("AutoSilentReload",{Text="Auto Reload",      Default=false})
     MiscGroup:AddToggle("AutoBlock",       {Text="God Block",        Default=false})
     MiscGroup:AddToggle("RespawnAtDeath",  {Text="Respawn At Death", Default=false})
-    MiscGroup:AddToggle("AntiBag",         {Text="Anti Bag",         Default=false})
     MiscGroup:AddToggle("HideCrosshairToggle", {Text="Hide Crosshair", Default=false})
     MiscGroup:AddToggle("AntiFlingToggle", {Text="Anti Fling",       Default=false})
     MiscGroup:AddToggle("AntiSitToggle",   {Text="Anti Sit",         Default=false})
@@ -2563,51 +2622,6 @@ do
         if not respawnEnabled then lastDeathPos = nil end
     end)
 
-    local antiBagEnabled = false
-    local antiBagCooldown = false
-    local function doAntiBag(char)
-        if antiBagCooldown then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-        antiBagCooldown = true
-        local saved = hrp.CFrame
-        hrp.CFrame = CFrame.new(saved.Position + Vector3.new(0,9999,0))
-        task.wait(5)
-        for _, v in ipairs(char:GetDescendants()) do
-            if v.Name == "Christmas_Sock" then pcall(function() v:Destroy() end) end
-        end
-        hrp.CFrame = saved task.wait(2) antiBagCooldown = false
-    end
-    local function setupAntiBag(char)
-        char.DescendantAdded:Connect(function(desc)
-            if not antiBagEnabled then return end
-            if desc.Name == "Christmas_Sock" then task.wait(0.05) doAntiBag(char) end
-        end)
-    end
-    RunService.Heartbeat:Connect(function()
-        if not antiBagEnabled or antiBagCooldown then return end
-        local char = LocalPlayer.Character
-        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character then
-                local otherHRP = plr.Character:FindFirstChild("HumanoidRootPart")
-                if otherHRP and (otherHRP.Position - hrp.Position).Magnitude < 8 then
-                    local tool = plr.Character:FindFirstChildOfClass("Tool")
-                    if tool then
-                        local n = tool.Name:lower()
-                        if n:find("bag") or n:find("sock") or n:find("christmas") or n:find("sack") or n:find("santa") then
-                            doAntiBag(char)
-                        end
-                    end
-                end
-            end
-        end
-    end)
-    if LocalPlayer.Character then task.spawn(function() setupAntiBag(LocalPlayer.Character) end) end
-    LocalPlayer.CharacterAdded:Connect(function(char) task.spawn(function() setupAntiBag(char) end) end)
-    Toggles.AntiBag:OnChanged(function() antiBagEnabled = Toggles.AntiBag.Value end)
-
     MiscGroup:AddToggle("NoJumpCooldown", {Text="No Jump Cooldown", Default=false})
     Toggles.NoJumpCooldown:OnChanged(function()
         if Toggles.NoJumpCooldown.Value then
@@ -2774,7 +2788,7 @@ do
     local RespawnAbuseGroupBox = Tabs.Ragebot:AddLeftGroupbox('Respawn Abuse')
     local DesyncGroup          = Tabs.Ragebot:AddRightGroupbox('Desync')
 
-    DesyncGroup:AddToggle('DesyncEnabled',     {Text='Desync',          Default=false})
+    DesyncGroup:AddToggle('DesyncEnabled',     {Text='Desync',          Default=false}):AddKeyPicker('DesyncKeybind',{Default='',SyncToggleState=false,Mode='Toggle',Text='Desync Key',NoUI=false})
     DesyncGroup:AddToggle('DesyncStayInVoid',  {Text='Stay In Void',    Default=false})
     DesyncGroup:AddToggle('DesyncSpam',        {Text='Spam',            Default=false})
     DesyncGroup:AddToggle('DesyncVisualize',   {Text='Visualize',       Default=false})
@@ -2782,6 +2796,10 @@ do
     DesyncGroup:AddSlider('DesyncInVoid',      {Text='In Void Time',    Default=0.4,   Min=0.05, Max=2, Rounding=2})
     DesyncGroup:AddSlider('DesyncOnGround',    {Text='On Ground Time',  Default=0.133, Min=0.05, Max=2, Rounding=3})
     DesyncGroup:AddSlider('DesyncTransparency',{Text='Visualize Trans', Default=0,     Min=0,    Max=1, Rounding=2})
+    Toggles.DesyncEnabled:OnChanged(function()     Desync.Enabled     = Toggles.DesyncEnabled.Value end)
+    Options.DesyncKeybind:OnClick(function()
+        Toggles.DesyncEnabled:SetValue(not Toggles.DesyncEnabled.Value)
+    end)
     Toggles.DesyncEnabled:OnChanged(function()     Desync.Enabled     = Toggles.DesyncEnabled.Value end)
     Toggles.DesyncStayInVoid:OnChanged(function()  Desync.StayInVoid  = Toggles.DesyncStayInVoid.Value end)
     Toggles.DesyncSpam:OnChanged(function()        Desync.Spam        = Toggles.DesyncSpam.Value end)
@@ -2791,11 +2809,12 @@ do
     Options.DesyncOnGround:OnChanged(function()    Desync.OnGround    = Options.DesyncOnGround.Value end)
     Options.DesyncTransparency:OnChanged(function() Desync.Transparency= Options.DesyncTransparency.Value end)
 
-    RagebotGroupBox:AddToggle('ragebotenabled',{Text='Enabled (Ban risk)',Default=false,
+    RagebotGroupBox:AddToggle('ragebotenabled',{Text='Enabled',Default=false,
         Callback=function(v)
             ragebotenabled=v
             if not v then
                 ragebotactive=false lockedTarget=nil
+                _G.rb_teleporting=false _G.rb_voiding=false _G.rb_isInCombat=false
                 workspace.CurrentCamera.CameraSubject=LocalPlayer.Character:FindFirstChild('Humanoid')
             end
         end
@@ -2803,7 +2822,11 @@ do
         Callback=function(v)
             if not ragebotenabled or UserInputService:GetFocusedTextBox() then return end
             ragebotactive=v
-            if not v then lockedTarget=nil workspace.CurrentCamera.CameraSubject=LocalPlayer.Character:FindFirstChild('Humanoid') end
+            if not v then
+                lockedTarget=nil
+                _G.rb_teleporting=false _G.rb_voiding=false _G.rb_isInCombat=false
+                workspace.CurrentCamera.CameraSubject=LocalPlayer.Character:FindFirstChild('Humanoid')
+            end
         end
     })
     RagebotGroupBox:AddToggle('selecttargets',{Text='Select Targets',Default=false,Callback=function(v) selecttargets=v end})
@@ -2851,9 +2874,6 @@ do
     })
     RagebotGroupBox:AddToggle('useflame',{Text='Use Flamethrower',Default=false,Callback=function(v) flamethrower_hack=v end})
     RagebotGroupBox:AddDropdown('settingsdropdown',{Text='Settings',Values={'Stomp','Random TP','Random Rotation','View'},Default=0,Multi=true})
-    RagebotGroupBox:AddSlider('RbOrbitSpeed',  {Text='Orbit Speed',  Default=8,  Min=1, Max=30, Rounding=1})
-    RagebotGroupBox:AddSlider('RbOrbitRadius', {Text='Orbit Radius', Default=15, Min=3, Max=40, Rounding=0})
-    RagebotGroupBox:AddSlider('RbOrbitHeight', {Text='Orbit Height', Default=3,  Min=0, Max=15, Rounding=0})
     Options.settingsdropdown:OnChanged(function()
         local s = Options.settingsdropdown.Value
         ragebotstompactive=s['Stomp'] ragebotrandomtpactive=s['Random TP']
@@ -2863,6 +2883,225 @@ do
     RagebotGroupBox:AddToggle('ragebotnotifications',{Text='Kill/Death Notifications',Default=false,
         Callback=function(v) ragebotNotificationsEnabled=v if not v then killCount=0 deathCount=0 lastKilledTarget=nil end end
     })
+
+    
+    local autoBuyEnabled = false
+    local autoBuyGuns = {}
+    local autoBuyInProgress = false
+
+    local gunDataRB = {
+        rifle     = {toolName='[Rifle]',     shopName='[Rifle] - $1745',     ammoShopName='5 [Rifle Ammo] - $281',     inventoryKey='[Rifle]'},
+        aug       = {toolName='[AUG]',       shopName='[AUG] - $2195',       ammoShopName='90 [AUG Ammo] - $90',       inventoryKey='[AUG]'},
+        flintlock = {toolName='[Flintlock]', shopName='[Flintlock] - $1463', ammoShopName='6 [Flintlock Ammo] - $168', inventoryKey='[Flintlock]'},
+    }
+
+    local function rbHasGun(toolName)
+        local char = LocalPlayer.Character
+        local bp = LocalPlayer:FindFirstChild('Backpack')
+        if bp then for _,i in ipairs(bp:GetChildren()) do if i:IsA('Tool') and i.Name==toolName then return true end end end
+        if char then for _,i in ipairs(char:GetChildren()) do if i:IsA('Tool') and i.Name==toolName then return true end end end
+        return false
+    end
+
+    local function rbGetAmmo(inventoryKey)
+        local ok, inv = pcall(function() return LocalPlayer.DataFolder.Inventory end)
+        if not ok or not inv then return nil end
+        local a = inv:FindFirstChild(inventoryKey)
+        return a and tonumber(a.Value) or nil
+    end
+
+    local gunBuyPositions = {
+        ['[Rifle] - $1745']              = Vector3.new(-259.658, 49.363, -213.512),
+        ['5 [Rifle Ammo] - $281']        = Vector3.new(-255.258, 49.363, -213.482),
+        ['[AUG] - $2195']                = Vector3.new(-273.048, 49.363, -213.312),
+        ['90 [AUG Ammo] - $90']          = Vector3.new(-278.033, 49.365, -213.394),
+        ['[Flintlock] - $1463']          = Vector3.new(-191.003, 18.850, -119.033),
+        ['6 [Flintlock Ammo] - $168']    = Vector3.new(-191.003, 18.850, -119.033),
+        ['[Shotgun] - $1407']            = Vector3.new(-578.624, 5.472, -725.132),
+        ['20 [Shotgun Ammo] - $68']      = Vector3.new(-578.424, 5.457, -747.132),
+        ['[SMG] - $844']                 = Vector3.new(-577.123, 5.477, -718.031),
+        ['80 [SMG Ammo] - $68']          = Vector3.new(-582.523, 5.478, -717.231),
+        ['[AK47] - $2195']               = Vector3.new(-587.529, 5.395, -753.718),
+        ['90 [AK47 Ammo] - $90']         = Vector3.new(-584.029, 5.393, -755.418),
+        ['[Drum-Shotgun] - $1407']       = Vector3.new(-1193.090, 25.480, -518.450),
+        ['20 [Drum-Shotgun Ammo] - $68'] = Vector3.new(-1193.520, 25.480, -530.230),
+        ['[LMG] - $4098']                = Vector3.new(-620.882, 20.300, -305.339),
+        ['200 [LMG Ammo] - $328']        = Vector3.new(-616.182, 20.300, -305.339),
+        ['[Revolver] - $1463']           = Vector3.new(-868.005, -35.549, -529.420),
+        ['6 [Revolver Ammo] - $168']     = Vector3.new(533.655, 1.731, -257.540),
+        ['[Flamethrower] - $2195']       = Vector3.new(-157.122, 50.913, -105.401),
+        ['90 [Flamethrower Ammo] - $90'] = Vector3.new(-150.322, 50.909, -105.801),
+    }
+
+    local function rbBuyShopItem(shopName, confirmFunc, maxAttempts, yOffset)
+        local buyPos3 = gunBuyPositions[shopName]
+        local cd
+        if buyPos3 then
+            
+            local shop = workspace:FindFirstChild('Ignored') and workspace.Ignored:FindFirstChild('Shop')
+            if shop then
+                local item = shop:FindFirstChild(shopName)
+                if item then
+                    cd = item:FindFirstChild('ClickDetector')
+                    if not cd then for _,v in pairs(item:GetDescendants()) do if v:IsA('ClickDetector') then cd=v break end end end
+                end
+            end
+        else
+            
+            local shop = workspace:FindFirstChild('Ignored') and workspace.Ignored:FindFirstChild('Shop')
+            if not shop then return false end
+            local item = shop:FindFirstChild(shopName)
+            if not item then return false end
+            local head = item:FindFirstChild('Head') or item:FindFirstChildOfClass('BasePart')
+            if not head then return false end
+            buyPos3 = head.Position + Vector3.new(0, yOffset or 3, 0)
+            cd = item:FindFirstChild('ClickDetector')
+            if not cd then for _,v in pairs(item:GetDescendants()) do if v:IsA('ClickDetector') then cd=v break end end end
+        end
+        if not cd then return false end
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild('HumanoidRootPart')
+        if not hrp then return false end
+        local hum = char:FindFirstChildOfClass('Humanoid')
+        local bp = LocalPlayer:FindFirstChild('Backpack')
+        if hum then hum:UnequipTools() end
+        if char and bp then
+            for _, tool in ipairs(char:GetChildren()) do
+                if tool:IsA('Tool') then tool.Parent = bp end
+            end
+        end
+        task.wait(0.2)
+        local orig = hrp.CFrame
+        maxAttempts = maxAttempts or 25
+        local attempts = 0
+        char = LocalPlayer.Character
+        hrp = char and char:FindFirstChild('HumanoidRootPart')
+        if not hrp then return false end
+        hrp.CFrame = CFrame.new(buyPos3)
+        task.wait(0.3)
+        fireclickdetector(cd)
+        task.wait(0.3)
+        while attempts < maxAttempts do
+            char = LocalPlayer.Character
+            hrp = char and char:FindFirstChild('HumanoidRootPart')
+            if not hrp then break end
+            hum = char:FindFirstChildOfClass('Humanoid')
+            if not hum or hum.Health <= 0 then break end
+            if confirmFunc and confirmFunc() then break end
+            fireclickdetector(cd)
+            task.wait(0.3)
+            attempts = attempts + 1
+        end
+        task.wait(0.2)
+        char = LocalPlayer.Character
+        hrp = char and char:FindFirstChild('HumanoidRootPart')
+        if hrp then hrp.CFrame = orig end
+        task.wait(0.3)
+        return confirmFunc == nil or (confirmFunc and confirmFunc())
+    end
+
+    task.spawn(function()
+        while true do
+            task.wait(1)
+            if not autoBuyEnabled or not ragebotactive or #autoBuyGuns == 0 then continue end
+            local char = LocalPlayer.Character
+            if not char then continue end
+            local hum = char:FindFirstChildOfClass('Humanoid')
+            if not hum or hum.Health <= 0 then continue end
+            local be = char:FindFirstChild('BodyEffects')
+            if be and be:FindFirstChild('K.O') and be['K.O'].Value then continue end
+            if autoBuyInProgress then continue end
+
+            for _, key in ipairs(autoBuyGuns) do
+                local info = gunDataRB[key]
+                if not info then continue end
+
+                
+                if not rbHasGun(info.toolName) then
+                    autoBuyInProgress = true
+                    ragebotactive = false
+                    _G.rb_teleporting = false _G.rb_voiding = false
+                    task.wait(0.3)
+                    local attempts = 0
+                    
+                    rbBuyShopItem(info.shopName, function() return rbHasGun(info.toolName) end, 25, 3)
+                    
+                    local bp = LocalPlayer:FindFirstChild('Backpack')
+                    local c = LocalPlayer.Character
+                    if bp and c then
+                        for _, selKey in ipairs(autoBuyGuns) do
+                            local selInfo = gunDataRB[selKey]
+                            if selInfo then
+                                local gun = bp:FindFirstChild(selInfo.toolName)
+                                if gun then gun.Parent = c end
+                            end
+                        end
+                    end
+                    if ragebotenabled then ragebotactive = true end
+                    autoBuyInProgress = false
+                    task.wait(1)
+                end
+
+                
+                local ammo = rbGetAmmo(info.inventoryKey)
+                if ammo and ammo <= 3 then
+                    autoBuyInProgress = true
+                    ragebotactive = false
+                    _G.rb_teleporting = false _G.rb_voiding = false
+                    task.wait(0.3)
+                    local initialAmmo = ammo
+                    
+                    local bought = 0
+                    rbBuyShopItem(info.ammoShopName, function()
+                        bought = bought + 1
+                        return bought >= 6
+                    end, 6, -8)
+                    
+                    local c = LocalPlayer.Character
+                    local bp = LocalPlayer:FindFirstChild('Backpack')
+                    if c and bp then
+                        for _, selKey in ipairs(autoBuyGuns) do
+                            local selInfo = gunDataRB[selKey]
+                            if selInfo then
+                                local gun = bp:FindFirstChild(selInfo.toolName)
+                                if gun then gun.Parent = c end
+                            end
+                        end
+                    end
+                    
+                    if c then
+                        for _, tool in ipairs(c:GetChildren()) do
+                            if tool:IsA('Tool') and tool:FindFirstChild('Ammo') then
+                                ReplicatedStorage.MainEvent:FireServer('Reload', tool)
+                            end
+                        end
+                    end
+                    if ragebotenabled then ragebotactive = true end
+                    autoBuyInProgress = false
+                    task.wait(1)
+                end
+            end
+        end
+    end)
+
+    local AutoBuyGroup = Tabs.Ragebot:AddRightGroupbox('Auto Buy Gun/Ammo')
+    AutoBuyGroup:AddToggle('autobuyenabled', {Text='Auto Buy (Need ragebot on and multi gun disabled)', Default=false,
+        Callback=function(v) autoBuyEnabled=v end
+    })
+    local autoBuyDepBox = AutoBuyGroup:AddDependencyBox()
+    autoBuyDepBox:AddDropdown('autobuygunselect', {
+        Text='Select Guns',
+        Values={'rifle','aug','flintlock'},
+        Default={},
+        Multi=true,
+    })
+    Options.autobuygunselect:OnChanged(function()
+        autoBuyGuns = {}
+        for key, sel in pairs(Options.autobuygunselect.Value) do
+            if sel then table.insert(autoBuyGuns, key) end
+        end
+    end)
+    autoBuyDepBox:SetupDependencies({{Toggles.autobuyenabled, true}})
 
     local AbuseProtection = false
     RespawnAbuseGroupBox:AddToggle('RespawnAbuse',{Text='Enabled',Default=false,Callback=function(v) AbuseProtection=v end})
@@ -3258,31 +3497,14 @@ do
                 RunService.RenderStepped:Wait()
                 if not ragebotactive then RootPart.CFrame=_G.rb_originalPosition or RootPart.CFrame return end
             elseif ragebotrandomtpactive then
-                
-                local orbitSpeed    = Options.RbOrbitSpeed   and Options.RbOrbitSpeed.Value   or 8
-                local orbitRadius   = Options.RbOrbitRadius  and Options.RbOrbitRadius.Value  or 15
-                local orbitHeight   = Options.RbOrbitHeight  and Options.RbOrbitHeight.Value  or 3
-                _G.rb_orbitAngle = (_G.rb_orbitAngle or 0) + orbitSpeed * dt
-                local ox = math.cos(_G.rb_orbitAngle) * orbitRadius
-                local oz = math.sin(_G.rb_orbitAngle) * orbitRadius
-                local oy = math.sin(_G.rb_orbitAngle * 2.5) * orbitHeight
-                local orbitPos = tPos + Vector3.new(ox, oy, oz)
                 if ragebotrandomrotationactive then
-                    RootPart.CFrame = CFrame.new(orbitPos)
-                        * CFrame.Angles(math.rad(math.random(0,360)), math.rad(math.random(0,360)), math.rad(math.random(0,360)))
+                    RootPart.CFrame=CFrame.new(tPos+Vector3.new(math.random(-20,20),math.random(-20,20),math.random(-20,20)))
+                        *CFrame.Angles(math.rad(math.random(0,360)),math.rad(math.random(0,360)),math.rad(math.random(0,360)))
                 else
-                    RootPart.CFrame = CFrame.lookAt(orbitPos, tPos)
+                    RootPart.CFrame=CFrame.lookAt(tPos+Vector3.new(math.random(-20,20),math.random(-20,20),math.random(-20,20)),tPos)
                 end
             else
-                
-                local orbitSpeed  = Options.RbOrbitSpeed  and Options.RbOrbitSpeed.Value  or 8
-                local orbitRadius = Options.RbOrbitRadius and Options.RbOrbitRadius.Value or 15
-                local orbitHeight = Options.RbOrbitHeight and Options.RbOrbitHeight.Value or 3
-                _G.rb_orbitAngle = (_G.rb_orbitAngle or 0) + orbitSpeed * dt
-                local ox = math.cos(_G.rb_orbitAngle) * orbitRadius
-                local oz = math.sin(_G.rb_orbitAngle) * orbitRadius
-                local oy = math.sin(_G.rb_orbitAngle * 2.5) * orbitHeight
-                RootPart.CFrame = CFrame.lookAt(tPos + Vector3.new(ox, oy, oz), tPos)
+                RootPart.CFrame=CFrame.lookAt(tPos+Vector3.new(math.random(-20,20),math.random(-20,20),math.random(-20,20)),tPos)
             end
         end
     end)
@@ -3344,7 +3566,6 @@ do
 end
 
 
-
 ThemeManager:SetLibrary(Library)
 ThemeManager:SetFolder('KraviX')
 ThemeManager:ApplyToTab(Tabs.UI)
@@ -3360,6 +3581,442 @@ MenuGroup:AddLabel('Menu bind'):AddKeyPicker('MenuKeybind',{Default='Insert',NoU
 MenuGroup:AddButton({Text='Unload', Func=function() Library:Unload() end})
 Options.MenuKeybind:OnClick(function() Library:Toggle() end)
 
-Library:Notify('KraviX Loaded!', 5)
+do
 
---By KraviX Team: Anni:uwu, makarov:fuck you leaker, sixsdev:👑
+    local AB = {
+        Enabled     = false,
+        TargetName  = "",
+        BuyingBag   = false,
+        LastAttempt = 0,
+        SpamRate    = 5,
+        SpawnCamp   = true,
+        BagDist     = 2.7,
+        BagHeight   = 2.0,
+        Prediction  = 0.1,
+        RespawnConn = nil,
+    }
+
+    local function ab_IsDead(player)
+        if not player or not player.Character then return true end
+        local hum = player.Character:FindFirstChildOfClass("Humanoid")
+        if hum and hum.Health <= 0 then return true end
+        local be = player.Character:FindFirstChild("BodyEffects")
+        local sd = be and (be:FindFirstChild("SDeath") or be:FindFirstChild("Dead"))
+        return sd and sd.Value == true or false
+    end
+
+    local function ab_IsBagged(player)
+        if not player or not player.Character then return false end
+        for _, name in ipairs({"Christmas_Sock","BrownBag","Bag"}) do
+            local c = player.Character:FindFirstChild(name, true)
+            if c and not c:IsA("Tool") then return true end
+        end
+        return false
+    end
+
+    local function ab_HasForceField(player)
+        if not player or not player.Character then return false end
+        return player.Character:FindFirstChildOfClass("ForceField") ~= nil
+    end
+
+    local function ab_GetBag()
+        local char = LocalPlayer.Character
+        local bp   = LocalPlayer.Backpack
+        if not char then return nil end
+        for _, name in ipairs({"[BrownBag]","[Christmas_Sock]","[Bag]"}) do
+            local t = char:FindFirstChild(name) or (bp and bp:FindFirstChild(name))
+            if t then return t end
+        end
+        return nil
+    end
+
+    local function ab_BuyBag()
+        if AB.BuyingBag then return end
+        AB.BuyingBag = true
+        task.spawn(function()
+            local ignored = workspace:FindFirstChild("Ignored")
+            local shop = ignored and ignored:FindFirstChild("Shop")
+            if not shop then AB.BuyingBag = false return end
+            local bagItem
+            for _, item in ipairs(shop:GetChildren()) do
+                local name = item.Name:lower()
+                if name:find("brownbag") or name:find("%[bag%]") then
+                    bagItem = item break
+                end
+            end
+            if not bagItem then AB.BuyingBag = false return end
+            local head = bagItem:FindFirstChild("Head")
+            local cd   = bagItem:FindFirstChildOfClass("ClickDetector")
+            if not head or not cd then AB.BuyingBag = false return end
+            local char = LocalPlayer.Character
+            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then AB.BuyingBag = false return end
+            local orig = hrp.CFrame
+            local deadline = tick() + 1.5
+            while tick() < deadline and not ab_GetBag() do
+                hrp.CFrame = head.CFrame + Vector3.new(0, 3, 0)
+                task.wait(0.05)
+                fireclickdetector(cd)
+                task.wait(0.05)
+                if ab_GetBag() then break end
+            end
+            hrp.CFrame = orig
+            AB.BuyingBag = false
+        end)
+    end
+
+    local function ab_GetBagCFrame(targetRoot)
+        local char   = targetRoot.Parent
+        local base   = (char and char:FindFirstChild("UpperTorso")) or targetRoot
+        local tPos   = base.Position + (targetRoot.Velocity * AB.Prediction)
+        local behind = base.CFrame.LookVector * -AB.BagDist
+        local above  = Vector3.new(0, AB.BagHeight, 0)
+        return CFrame.new(tPos + behind + above, tPos)
+    end
+
+    local function ab_GetTarget(name)
+        if not name or name == "" then return nil end
+        local p = Players:FindFirstChild(name)
+        if not p or ab_IsDead(p) then return nil end
+        if not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") then return nil end
+        return p
+    end
+
+    
+    local function ab_ChaseAndBag(targetName, onlyOnce, stopFlag)
+        local target = ab_GetTarget(targetName)
+        if not target then return end
+
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        local orig = hrp.CFrame 
+
+        local wasBagged = false
+        local lastAttempt = 0
+        local deadline = onlyOnce and (tick() + 20) or math.huge
+
+        while true do
+            if stopFlag and stopFlag() then break end
+            if tick() > deadline then break end
+
+            target = ab_GetTarget(targetName)
+            if not target then
+                task.wait(0.1)
+                if ab_IsDead(Players:FindFirstChild(targetName)) then
+                    local respawnDeadline = tick() + 30
+                    while tick() < respawnDeadline do
+                        if stopFlag and stopFlag() then return end
+                        local p = Players:FindFirstChild(targetName)
+                        if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then break end
+                        task.wait(0.05)
+                    end
+                end
+                continue
+            end
+
+            char = LocalPlayer.Character
+            hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then task.wait(0.1) continue end
+
+            local targetRoot = target.Character:FindFirstChild("HumanoidRootPart")
+            if not targetRoot then task.wait(0.05) continue end
+
+            if ab_HasForceField(target) then
+                task.wait(0.1)
+                continue
+            end
+
+            local isBagged = ab_IsBagged(target)
+            if isBagged and not wasBagged then
+                wasBagged = true
+                MainEvent:FireServer("Stomp")
+                if not ab_GetBag() then ab_BuyBag() end
+
+                
+                task.wait(0.2)
+                hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.CFrame = orig end
+
+                if onlyOnce then
+                    break
+                end
+            elseif not isBagged then
+                wasBagged = false
+                local now = tick()
+                if not AB.BuyingBag and (now - lastAttempt) >= (1 / AB.SpamRate) then
+                    lastAttempt = now
+                    local bag = ab_GetBag()
+                    if not bag then
+                        ab_BuyBag()
+                    else
+                        
+                        
+                        hrp.CFrame = ab_GetBagCFrame(targetRoot)
+                        if bag.Parent == LocalPlayer.Backpack then
+                            local hum = char:FindFirstChildOfClass("Humanoid")
+                            if hum then hum:EquipTool(bag) end
+                        end
+                        if bag.Parent == char then
+                            bag:Activate()
+                        end
+                    end
+                end
+            end
+
+            task.wait(0.03)
+        end
+    end
+
+    
+    local ab_loopRunning = false
+    local function ab_StartLoop()
+        if ab_loopRunning then return end
+        ab_loopRunning = true
+        task.spawn(function()
+            while AB.Enabled do
+                ab_ChaseAndBag(AB.TargetName, false, function() return not AB.Enabled end)
+                task.wait(0.05)
+            end
+            ab_loopRunning = false
+        end)
+    end
+
+    
+    local ab_singleRunning = false
+    local function ab_SingleUse()
+        if AB.TargetName == "" then
+            Library:Notify("Select a player first!", 2)
+            return
+        end
+        if ab_singleRunning then return end
+        ab_singleRunning = true
+        task.spawn(function()
+            Library:Notify("Chasing " .. AB.TargetName .. " to bag...", 2)
+            ab_ChaseAndBag(AB.TargetName, true, function() return ab_singleRunning == false end)
+            ab_singleRunning = false
+            Library:Notify("Bag Once finished on " .. AB.TargetName, 2)
+        end)
+    end
+
+    
+    local BaggerGroup = Tabs.Ragebot:AddRightGroupbox('Auto Bagger')
+
+    local function buildPlayerListAB()
+        local names = {}
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then table.insert(names, p.Name) end
+        end
+        return names
+    end
+
+    BaggerGroup:AddDropdown('AB_Target', {
+        Values=buildPlayerListAB(), Default=1, Multi=false, Text='Target',
+        Callback=function(v) AB.TargetName = v or "" end
+    })
+    BaggerGroup:AddToggle('AB_Enabled', {Text='Enable Auto Bagger', Default=false,
+        Callback=function(v)
+            AB.Enabled = v
+            if v then
+                if not ab_GetBag() then ab_BuyBag() end
+                ab_StartLoop()
+                Library:Notify('Auto Bagger ON -> ' .. AB.TargetName, 2)
+            else
+                Library:Notify('Auto Bagger OFF', 2)
+            end
+        end
+    })
+    BaggerGroup:AddToggle('AB_SpawnCamp', {Text='Spawn Camp', Default=true,
+        Callback=function(v) AB.SpawnCamp = v end
+    })
+    BaggerGroup:AddSlider('AB_SpamRate', {Text='Spam Rate', Default=5, Min=1, Max=30, Rounding=0,
+        Callback=function(v) AB.SpamRate = v end
+    })
+    BaggerGroup:AddSlider('AB_BagDist', {Text='Behind Distance', Default=2.7, Min=0.5, Max=6, Rounding=1,
+        Callback=function(v) AB.BagDist = v end
+    })
+    BaggerGroup:AddSlider('AB_BagHeight', {Text='Above Height', Default=2.0, Min=0, Max=5, Rounding=1,
+        Callback=function(v) AB.BagHeight = v end
+    })
+    BaggerGroup:AddSlider('AB_Prediction', {Text='Velocity Prediction', Default=0.1, Min=0, Max=1, Rounding=2,
+        Callback=function(v) AB.Prediction = v end
+    })
+    BaggerGroup:AddButton({Text='Bag Once', Func=function() ab_SingleUse() end})
+
+    Players.PlayerAdded:Connect(function()
+        if Options.AB_Target then Options.AB_Target:SetValues(buildPlayerListAB()) end
+    end)
+    Players.PlayerRemoving:Connect(function()
+        if Options.AB_Target then Options.AB_Target:SetValues(buildPlayerListAB()) end
+    end)
+end
+
+do
+
+    local AntiB = {
+        Enabled        = false,
+        RespawnOnBag   = false,
+        SafeDistance   = 15,
+        DodgeDuration  = 0.46,
+        LastDodgeTime  = 0,
+        Dodging        = false,
+        SavedCFrame    = nil,
+    }
+
+    local BagAnimIds = {
+        ["rbxassetid://10921259953"] = true,
+        ["rbxassetid://3493406987"]  = true,
+        ["10921259953"]              = true,
+        ["3493406987"]               = true,
+    }
+
+    local function ab_IsBaggedOnMe()
+        local char = LocalPlayer.Character
+        if not char then return false end
+        for _, name in ipairs({"Christmas_Sock","BrownBag","Bag"}) do
+            local c = char:FindFirstChild(name, true)
+            if c and not c:IsA("Tool") then return true end
+        end
+        return false
+    end
+
+    local function ab_IsHoldingBag(player)
+        if not player or not player.Character then return false end
+        local tool = player.Character:FindFirstChildOfClass("Tool")
+        if not tool then return false end
+        local n = tool.Name:lower()
+        return n:find("bag") or n:find("sock")
+    end
+
+    local function ab_IsSwingingBag(player)
+        if not player or not player.Character then return false end
+        if not ab_IsHoldingBag(player) then return false end
+        local hum = player.Character:FindFirstChildOfClass("Humanoid")
+        if not hum then return false end
+        for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
+            local id = track.Animation and tostring(track.Animation.AnimationId) or ""
+            local num = id:match("(%d+)")
+            if BagAnimIds[id] or (num and BagAnimIds[num]) then
+                local len = tonumber(track.Length) or 0
+                local prog = len > 0 and (track.TimePosition / track.Length) or 0
+                if prog >= 0.22 and prog <= 0.35 then return true end
+                if len <= 0 and (tonumber(track.TimePosition) or 0) > 0.02 then return true end
+            end
+        end
+        return false
+    end
+
+    local function ab_GetVoidCFrame()
+        return CFrame.new(1.8812581888888e13, 9.9999999999999e29, 9.98235235621111e14)
+    end
+
+    local function ab_GoVoid()
+        local char = LocalPlayer.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        AntiB.SavedCFrame = hrp.CFrame
+        hrp.CFrame = ab_GetVoidCFrame()
+    end
+
+    local function ab_ReturnFromVoid()
+        local char = LocalPlayer.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp or not AntiB.SavedCFrame then return end
+        hrp.CFrame = AntiB.SavedCFrame
+        AntiB.SavedCFrame = nil
+    end
+
+    local function ab_ForceRespawn()
+        local char = LocalPlayer.Character
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.Health > 0 then
+            hum.Health = 0
+        end
+    end
+
+    
+    local ab_lastRespawn = 0
+    RunService.Stepped:Connect(function()
+        if not AntiB.Enabled then return end
+
+        local char = LocalPlayer.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        if not char or not hrp then return end
+
+        local now = tick()
+
+        
+        if AntiB.RespawnOnBag and ab_IsBaggedOnMe() then
+            if now - ab_lastRespawn > 2 then
+                ab_lastRespawn = now
+                
+                hrp.CFrame = ab_GetVoidCFrame()
+                task.wait(0.1)
+                ab_ForceRespawn()
+                Library:Notify("Anti-Bag: Bag detected! Respawning...", 3)
+            end
+            return
+        end
+
+        
+        if AntiB.Dodging then
+            local elapsed = now - AntiB.LastDodgeTime
+            if elapsed < AntiB.DodgeDuration then
+                hrp.CFrame = ab_GetVoidCFrame()
+            else
+                AntiB.Dodging = false
+                ab_ReturnFromVoid()
+            end
+            return
+        end
+
+        local myPos = hrp.Position
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local phrp = player.Character:FindFirstChild("HumanoidRootPart")
+                if phrp then
+                    local dist = (phrp.Position - myPos).Magnitude
+                    if dist <= AntiB.SafeDistance and ab_IsSwingingBag(player) then
+                        AntiB.Dodging = true
+                        AntiB.LastDodgeTime = now
+                        AntiB.SavedCFrame = hrp.CFrame
+                        hrp.CFrame = ab_GetVoidCFrame()
+                        Library:Notify("Anti-Bag: Esquivando de " .. player.Name .. "!", 2)
+                        break
+                    end
+                end
+            end
+        end
+    end)
+
+    
+    local AntiBagGroup = Tabs.Misc:AddLeftGroupbox('Anti Bag')
+
+    AntiBagGroup:AddToggle('AntiB_Enabled', {Text='Enable Anti-Bag', Default=false,
+        Callback=function(v)
+            AntiB.Enabled = v
+            AntiB.Dodging = false
+            AntiB.SavedCFrame = nil
+            if v then
+                Library:Notify('Anti-Bag ON', 2)
+            else
+                Library:Notify('Anti-Bag OFF', 2)
+            end
+        end
+    })
+
+    AntiBagGroup:AddToggle('AntiB_RespawnOnBag', {Text='Respawn on Bag', Default=false,
+        Tooltip='If a bag is placed on you, reset automatically',
+        Callback=function(v) AntiB.RespawnOnBag = v end
+    })
+
+    AntiBagGroup:AddSlider('AntiB_SafeDist', {Text='Detection Radius', Default=15, Min=5, Max=50, Rounding=0,
+        Callback=function(v) AntiB.SafeDistance = v end
+    })
+
+    AntiBagGroup:AddSlider('AntiB_DodgeDur', {Text='Dodge Duration', Default=0.46, Min=0.2, Max=2, Rounding=2,
+        Callback=function(v) AntiB.DodgeDuration = v end
+    })
+end
+
+Library:Notify('KraviX Loaded!', 5)
