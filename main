@@ -2809,7 +2809,7 @@ do
     Options.DesyncOnGround:OnChanged(function()    Desync.OnGround    = Options.DesyncOnGround.Value end)
     Options.DesyncTransparency:OnChanged(function() Desync.Transparency= Options.DesyncTransparency.Value end)
 
-    RagebotGroupBox:AddToggle('ragebotenabled',{Text='Enabled',Default=false,
+    RagebotGroupBox:AddToggle('ragebotenabled',{Text='Enabled (Ban risk 80%)',Default=false,
         Callback=function(v)
             ragebotenabled=v
             if not v then
