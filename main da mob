@@ -791,6 +791,113 @@ local TabESP    = Library:Tab("ESP",    "ESP")
 local TabChar   = Library:Tab("Char",   "CHAR")
 local TabWorld  = Library:Tab("World",  "WORLD")
 local TabMisc   = Library:Tab("Misc",   "MISC")
+local TabUi = Library:Tab("UI", "UI")
+
+
+local _aimRef, _speedRef, _flyRef = nil, nil, nil
+local _btnSizes = {AIM=60, SPD=60, FLY=60}
+local _btnVisible = {AIM=true, SPD=true, FLY=true}
+
+
+local function UpdateFloatButtonSize(label, size)
+    local btn = label=="AIM" and _aimRef or label=="SPD" and _speedRef or _flyRef
+    if btn then
+        btn.Size = UDim2.fromOffset(size, size)
+        btn.TextSize = math.floor(14 * (size / 48))
+    end
+end
+
+local function UpdateFloatButtonVisibility(label, visible)
+    local btn = label=="AIM" and _aimRef or label=="SPD" and _speedRef or _flyRef
+    if btn then
+        btn.Visible = visible
+    end
+end
+
+
+do
+    local sec = TabUi:Group("Float Buttons")
+    
+    sec:Label({Text="AIM Button"})
+    sec:Toggle({Name="Show AIM", Default=true, Callback=function(v)
+        _btnVisible.AIM = v
+        UpdateFloatButtonVisibility("AIM", v)
+    end})
+    sec:Slider({
+        Name = "AIM Size",
+        Min = 30,
+        Max = 80,
+        Default = 60,
+        Rounding = 0,
+        Suffix = "px",
+        Callback = function(v)
+            _btnSizes.AIM = v
+            UpdateFloatButtonSize("AIM", v)
+        end
+    })
+    
+    sec:Separator()
+    
+    sec:Label({Text="SPD Button"})
+    sec:Toggle({Name="Show SPD", Default=true, Callback=function(v)
+        _btnVisible.SPD = v
+        UpdateFloatButtonVisibility("SPD", v)
+    end})
+    sec:Slider({
+        Name = "SPD Size",
+        Min = 30,
+        Max = 80,
+        Default = 60,
+        Rounding = 0,
+        Suffix = "px",
+        Callback = function(v)
+            _btnSizes.SPD = v
+            UpdateFloatButtonSize("SPD", v)
+        end
+    })
+    
+    sec:Separator()
+    
+    sec:Label({Text="FLY Button"})
+    sec:Toggle({Name="Show FLY", Default=true, Callback=function(v)
+        _btnVisible.FLY = v
+        UpdateFloatButtonVisibility("FLY", v)
+    end})
+    sec:Slider({
+        Name = "FLY Size",
+        Min = 30,
+        Max = 80,
+        Default = 60,
+        Rounding = 0,
+        Suffix = "px",
+        Callback = function(v)
+            _btnSizes.FLY = v
+            UpdateFloatButtonSize("FLY", v)
+        end
+    })
+    
+    sec:Separator()
+    
+    sec:Button({
+        Name = "Reset All to Default",
+        Callback = function()
+            _btnSizes.AIM = 60
+            _btnSizes.SPD = 60
+            _btnSizes.FLY = 60
+            _btnVisible.AIM = true
+            _btnVisible.SPD = true
+            _btnVisible.FLY = true
+            UpdateFloatButtonSize("AIM", 60)
+            UpdateFloatButtonSize("SPD", 60)
+            UpdateFloatButtonSize("FLY", 60)
+            UpdateFloatButtonVisibility("AIM", true)
+            UpdateFloatButtonVisibility("SPD", true)
+            UpdateFloatButtonVisibility("FLY", true)
+            Library:Notify("All buttons reset to default!", "success")
+        end
+    })
+end
+
 
 
 do
@@ -815,6 +922,7 @@ do
     sec:ColorPicker({Name="FOV Color",Default=Color3.fromRGB(255,255,255),Callback=function(v) AimbotSettings.FOVColor=v end})
 
     local _aimBtn,_aimIsClick=MakeDraggableSquareBtn("AIM",nil,UDim2.new(1,-75,1,-130))
+    _aimRef = _aimBtn
     _aimBtn.InputBegan:Connect(function(inp)
         if inp.UserInputType~=Enum.UserInputType.Touch and inp.UserInputType~=Enum.UserInputType.MouseButton1 then return end
         if not AimbotSettings.Enabled then return end
@@ -1152,7 +1260,6 @@ do
     sec:ColorPicker({Name="Chams Color",Default=Color3.fromRGB(255,255,255),Callback=function(v) ESPSettings.ChamsColor=v end})
     sec:Slider({Name="Chams Trans",Min=0,Max=1,Default=0.5,Rounding=2,Callback=function(v) ESPSettings.ChamsTrans=v end})
 end
-
 
 
 local DamageNumsSettings={Enabled=false,Color=Color3.fromRGB(255,255,255)}
@@ -1966,6 +2073,7 @@ do
     sec:Label({Text="Tap SPD to toggle."})
 
     local _speedBtn,_spdIsClick=MakeDraggableSquareBtn("SPD",nil,UDim2.new(1,-145,1,-130))
+    _speedRef = _speedBtn
     _speedBtn.InputEnded:Connect(function(inp)
         if (inp.UserInputType==Enum.UserInputType.Touch or inp.UserInputType==Enum.UserInputType.MouseButton1) and _spdIsClick() then
             if not SpeedSettings.Enabled then return end
@@ -1984,6 +2092,7 @@ do
     sec:Label({Text="Tap FLY to toggle."})
 
     local _flyBtn,_flyIsClick=MakeDraggableSquareBtn("FLY",nil,UDim2.new(1,-215,1,-130))
+    _flyRef = _flyBtn
     _flyBtn.InputEnded:Connect(function(inp)
         if (inp.UserInputType==Enum.UserInputType.Touch or inp.UserInputType==Enum.UserInputType.MouseButton1) and _flyIsClick() then
             if not FlySettings.Enabled then return end
