@@ -7112,7 +7112,7 @@ do
     _G.rb_bagging           = false
 
     RagebotGroupBox:AddDivider()
-    RagebotGroupBox:AddToggle('RbAutoBuyWeapon', { Text = 'Auto Buy Weapon (on death)', Default = false,
+    RagebotGroupBox:AddToggle('RbAutoBuyWeapon', { Text = 'Auto Buy Weapon', Default = false,
         Callback = function(v) rb_autoBuyWeapon = v end })
     RagebotGroupBox:AddDropdown('RbAutoBuyWeaponSelect', {
         Values = {
@@ -7139,7 +7139,7 @@ do
         },
         Default = 1, Multi = true, Text = 'Weapons to Buy'
     })
-    RagebotGroupBox:AddToggle('RbAutoBuyAmmo', { Text = 'Auto Buy Ammo (on empty)', Default = false,
+    RagebotGroupBox:AddToggle('RbAutoBuyAmmo', { Text = 'Auto Buy Ammo', Default = false,
         Callback = function(v) rb_autoBuyAmmo = v end })
     RagebotGroupBox:AddToggle('RbAutoBagTarget', { Text = 'Auto Bag Target', Default = false,
         Callback = function(v) rb_autoBagTarget = v end })
