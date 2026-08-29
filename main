@@ -385,7 +385,7 @@ local lastDotToggleTime = 0
 
 local function getClosestPlayerToCursorDot()
     local closestPlayer = nil
-    local bestAlignment = -math.huge -- dot product: mais perto de 1 = mais na frente
+    local bestAlignment = -math.huge 
     local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     local lookVector = Camera.CFrame.LookVector
 
@@ -532,7 +532,7 @@ Toggles.SilentShowFOV:OnChanged(function() SilentAimSettings.ShowFOV = Toggles.S
 Options.SilentFOVSize:OnChanged(function() SilentAimSettings.FOV = Options.SilentFOVSize.Value end)
 Options.SilentFOVColor:OnChanged(function() SilentAimSettings.FOVColor = Options.SilentFOVColor.Value end)
 
--- Dot Target UI e funcionalidade
+
 SilentGroup:AddToggle('DotTargetEnable', {Text='Dot Target', Default=false})
     :AddKeyPicker('DotTargetKey', {Default='Q', Mode='Toggle', Text='Dot Key', SyncToggleState=false, NoUI=false})
 
@@ -7101,7 +7101,7 @@ do
         end
     })
 
-    -- Auto Buy / Auto Bag toggles (Ragebot Manual)
+    
     local rb_autoBuyWeapon  = false
     local rb_autoBuyAmmo    = false
     local rb_autoBagTarget  = false
@@ -7191,7 +7191,7 @@ do
         local bp   = LocalPlayer.Backpack
         local gun  = (char and rb_findGun(char)) or (bp and rb_findGun(bp))
         if not gun then return nil end
-        -- strip brackets e.g. "[Pistol]" -> "pistol"
+        
         return gun.Name:lower():gsub('[%[%]]', ''):gsub('%s', '')
     end
 
@@ -7568,11 +7568,11 @@ do
 
     _G.rbStompFrameCount = 0
 
-    -- Stepped move: move em passos para parecer corrida rapida ao inves de teleporte
+    
     _G.rb_steppedMove = function(root, targetCF)
         if not root or not root.Parent then return end
         local dist = (root.CFrame.Position - targetCF.Position).Magnitude
-        -- Se ja esta perto o suficiente, apenas ajusta orientacao
+        
         if dist < 4 then
             pcall(function()
                 root.CFrame = targetCF
@@ -7580,11 +7580,11 @@ do
             end)
             return
         end
-        -- Numero de passos proporcional a distancia (max 4)
+        
         local steps = math.clamp(math.floor(dist / 15), 1, 4)
         local startCF = root.CFrame
         local dir = (targetCF.Position - startCF.Position).Unit
-        -- Injeta velocidade na direcao do destino para parecer corrida/dash
+        
         pcall(function()
             root.AssemblyLinearVelocity = dir * math.clamp(dist * 3, 30, 90)
         end)
@@ -7740,7 +7740,7 @@ do
         local isKO = TargetBE and TargetBE:FindFirstChild("K.O")    and TargetBE["K.O"].Value
         local isSD = TargetBE and TargetBE:FindFirstChild("SDeath") and TargetBE["SDeath"].Value
 
-        -- 1. PRIMEIRO: Auto Buy Weapon (se ativo e sem arma)
+        
         if rb_buyingWeapon then return end
         if rb_autoBuyWeapon then
             local weapons = Options.RbAutoBuyWeaponSelect and Options.RbAutoBuyWeaponSelect.Value
@@ -7765,7 +7765,7 @@ do
             end
         end
 
-        -- 2. Auto Buy Ammo
+        
         if rb_buyingAmmo then return end
         if rb_autoBuyAmmo then
             local emptyTool = nil
@@ -7799,7 +7799,7 @@ do
             end
         end
 
-        -- 3. Auto Bag Target
+        
         if rb_buyingBag then return end
         if rb_autoBagTarget and lockedTarget and not isKO and not isSD then
             if not rb_isTargetBagged(lockedTarget) then
@@ -8356,7 +8356,7 @@ do
         local isKO = TargetBE and TargetBE:FindFirstChild("K.O") and TargetBE["K.O"].Value
         local isSD = TargetBE and TargetBE:FindFirstChild("SDeath") and TargetBE["SDeath"].Value
 
-        -- 1. Auto Buy Weapon em Ragebot Automatic
+        
         if rb_buyingWeapon then return end
         if ra_autoBuyWeapon then
             local weapons = Options.RaAutoBuyWeaponSelect and Options.RaAutoBuyWeaponSelect.Value
@@ -8381,7 +8381,7 @@ do
             end
         end
 
-        -- 2. Auto Buy Ammo em Ragebot Automatic
+        
         if rb_buyingAmmo then return end
         if ra_autoBuyAmmo then
             local emptyTool = nil
@@ -8413,7 +8413,7 @@ do
             end
         end
 
-        -- 3. Auto Bag Target em Ragebot Automatic
+        
         if rb_buyingBag then return end
         if ra_autoBagTarget and ra_lockedTarget and not isKO and not isSD then
             if not rb_isTargetBagged(ra_lockedTarget) then
@@ -8734,7 +8734,7 @@ do
         local shop = workspace:FindFirstChild("Ignored") and workspace.Ignored:FindFirstChild("Shop")
         if not shop then return nil, nil end
         local cleanTarget = string.lower(targetName or ""):gsub("[%[%]]", ""):gsub("%s", "")
-        -- loja usa [StopSign]; a tool no inventario e [Stopsing]
+        
         if cleanTarget == "stopsing" then cleanTarget = "stopsign" end
         for _, item in ipairs(shop:GetChildren()) do
             local cleanItem = string.lower(item.Name):gsub("[%[%]]", ""):gsub("%s", "")
@@ -8754,7 +8754,7 @@ do
         return nil, nil
     end
 
-    -- juju beta style force_cframe lock while buying
+    
     local kfForceCFrame = nil
     if getgenv().kfForceCFrameConn then getgenv().kfForceCFrameConn:Disconnect() end
     getgenv().kfForceCFrameConn = RunService.Heartbeat:Connect(function()
@@ -9037,7 +9037,7 @@ do
             return bestPlr or targets[1]
         end
 
-        -- Fallback: if no specific player was selected in the menu, find the nearest player
+        
         local char = LocalPlayer.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
         local bestPlr = nil
@@ -9127,7 +9127,7 @@ do
                     continue
                 end
 
-                -- 1. Buy weapon if enabled and unarmed
+                
                 if kfTv('KnifeAutoBuyWeapon') then
                     local selectedWep = kfOv('KnifeAutoBuyWeaponSelect') or 'Knife'
                     local hasWep = kfFindMelee(char) or kfFindMelee(LocalPlayer:FindFirstChild('Backpack'))
@@ -9142,7 +9142,7 @@ do
                     end
                 end
 
-                -- 2. Buy bag if enabled and no bag in inventory
+                
                 if kfTv('KnifeAutoBagTarget') and kfGetBag() == nil then
                     kfUpdateStatus("buying bag...")
                     kfBuyBag()
@@ -9152,7 +9152,7 @@ do
                     end
                 end
 
-                -- 3. Find targets and run KnifeBot logic
+                
                 local allTargets = kfGetTargetPlayers()
                 if #allTargets == 0 then
                     kfUpdateStatus("no target...")
