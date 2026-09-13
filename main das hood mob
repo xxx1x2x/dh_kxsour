@@ -17,7 +17,7 @@ local Options = Library.Options
 local Toggles = Library.Toggles
 
 local Window = Library:CreateWindow({
-    Title = 'KraviX | Das Hood',
+    Title = 'KraviX | Da Hood',
     Center = true,
     AutoShow = true,
     TabPadding = 8,
@@ -78,6 +78,9 @@ local MobileUI = {
     speedGui = nil,
     speedBtn = nil,
     createSpeedUI = nil,
+    ragebotGui = nil,
+    ragebotBtn = nil,
+    createRagebotUI = nil,
 }
 
 do
@@ -4959,16 +4962,42 @@ do
     RagebotGroupBox:AddToggle('ragebotenabled',{Text='Enabled',Default=false,
         Callback=function(v)
             ragebotenabled=v
-            if not v then
+            if v then
+                MobileUI.createRagebotUI()
+                if MobileUI.ragebotGui then MobileUI.ragebotGui.Enabled = true end
+            else
+                if MobileUI.ragebotGui then MobileUI.ragebotGui.Enabled = false end
                 ragebotactive=false lockedTarget=nil
                 workspace.CurrentCamera.CameraSubject=LocalPlayer.Character:FindFirstChild('Humanoid')
+                if MobileUI.ragebotBtn then
+                    MobileUI.ragebotBtn.Text = "Ragebot: OFF"
+                    MobileUI.ragebotBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+                    MobileUI.ragebotBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
+                end
             end
         end
     }):AddKeyPicker('ragebotkeybind',{Default='',Text='ragebot',Mode='Toggle',
         Callback=function(v)
             if not ragebotenabled or UserInputService:GetFocusedTextBox() then return end
             ragebotactive=v
-            if not v then lockedTarget=nil workspace.CurrentCamera.CameraSubject=LocalPlayer.Character:FindFirstChild('Humanoid') end
+            if v then
+                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    _G.rb_originalPosition=LocalPlayer.Character.HumanoidRootPart.CFrame
+                end
+                _G.rb_shouldSwitch=true
+                if MobileUI.ragebotBtn then
+                    MobileUI.ragebotBtn.Text = "Ragebot: ON"
+                    MobileUI.ragebotBtn.BackgroundColor3 = Color3.fromRGB(220, 35, 35)
+                    MobileUI.ragebotBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                end
+            else
+                lockedTarget=nil workspace.CurrentCamera.CameraSubject=LocalPlayer.Character:FindFirstChild('Humanoid')
+                if MobileUI.ragebotBtn then
+                    MobileUI.ragebotBtn.Text = "Ragebot: OFF"
+                    MobileUI.ragebotBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+                    MobileUI.ragebotBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
+                end
+            end
         end
     })
     RagebotGroupBox:AddToggle('selecttargets',{Text='Select Targets',Default=false,Callback=function(v) selecttargets=v end})
@@ -5359,11 +5388,102 @@ do
         end
         _G.rb_originalPosition=nil
         if ragebotNotificationsEnabled then killCount=0 deathCount=0 lastKilledTarget=nil end
+        if MobileUI.ragebotBtn then
+            MobileUI.ragebotBtn.Text = "Ragebot: OFF"
+            MobileUI.ragebotBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+            MobileUI.ragebotBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
+        end
+    end
+
+    MobileUI.createRagebotUI = function()
+        if MobileUI.ragebotGui then return end
+        local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
+        MobileUI.ragebotGui = Instance.new("ScreenGui")
+        MobileUI.ragebotGui.Name = "RagebotMobileGui"
+        MobileUI.ragebotGui.ResetOnSpawn = false
+        MobileUI.ragebotGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        MobileUI.ragebotGui.Parent = pgui
+
+        MobileUI.ragebotBtn = Instance.new("TextButton")
+        MobileUI.ragebotBtn.Name = "RagebotToggleButton"
+        MobileUI.ragebotBtn.Size = UDim2.new(0, 115, 0, 45)
+        MobileUI.ragebotBtn.Position = UDim2.new(0.5, -180, 0.75, 0)
+        MobileUI.ragebotBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+        MobileUI.ragebotBtn.BorderSizePixel = 0
+        MobileUI.ragebotBtn.Text = "Ragebot: OFF"
+        MobileUI.ragebotBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
+        MobileUI.ragebotBtn.Font = Enum.Font.GothamBold
+        MobileUI.ragebotBtn.TextSize = 14
+        MobileUI.ragebotBtn.AutoButtonColor = false
+        MobileUI.ragebotBtn.Parent = MobileUI.ragebotGui
+
+        local rbCorner = Instance.new("UICorner")
+        rbCorner.CornerRadius = UDim.new(0, 12)
+        rbCorner.Parent = MobileUI.ragebotBtn
+
+        local rbStroke = Instance.new("UIStroke")
+        rbStroke.Color = Color3.fromRGB(220, 40, 40)
+        rbStroke.Thickness = 1.5
+        rbStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        rbStroke.Parent = MobileUI.ragebotBtn
+
+        local rbDragging = false
+        local rbDragInput, rbDragStart, rbStartPos
+
+        MobileUI.ragebotBtn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                rbDragging = true
+                rbDragStart = input.Position
+                rbStartPos = MobileUI.ragebotBtn.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then rbDragging = false end
+                end)
+            end
+        end)
+
+        MobileUI.ragebotBtn.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                rbDragInput = input
+            end
+        end)
+
+        UserInputService.InputChanged:Connect(function(input)
+            if input == rbDragInput and rbDragging then
+                local delta = input.Position - rbDragStart
+                MobileUI.ragebotBtn.Position = UDim2.new(
+                    rbStartPos.X.Scale, rbStartPos.X.Offset + delta.X,
+                    rbStartPos.Y.Scale, rbStartPos.Y.Offset + delta.Y
+                )
+            end
+        end)
+
+        MobileUI.ragebotBtn.MouseButton1Click:Connect(function()
+            if not ragebotenabled then return end
+            ragebotactive = not ragebotactive
+            if ragebotactive then
+                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    _G.rb_originalPosition = LocalPlayer.Character.HumanoidRootPart.CFrame
+                end
+                _G.rb_shouldSwitch = true
+                MobileUI.ragebotBtn.Text = "Ragebot: ON"
+                MobileUI.ragebotBtn.BackgroundColor3 = Color3.fromRGB(220, 35, 35)
+                MobileUI.ragebotBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                rbStroke.Color = Color3.fromRGB(255, 70, 70)
+            else
+                resetRagebot()
+            end
+        end)
     end
 
     Toggles.ragebotenabled:OnChanged(function()
         ragebotenabled=Toggles.ragebotenabled.Value
-        if not ragebotenabled then resetRagebot() end
+        if ragebotenabled then
+            MobileUI.createRagebotUI()
+            if MobileUI.ragebotGui then MobileUI.ragebotGui.Enabled = true end
+        else
+            if MobileUI.ragebotGui then MobileUI.ragebotGui.Enabled = false end
+            resetRagebot()
+        end
     end)
     Options.ragebotkeybind:OnClick(function()
         if not ragebotenabled or UserInputService:GetFocusedTextBox() then return end
@@ -5373,6 +5493,11 @@ do
                 _G.rb_originalPosition=LocalPlayer.Character.HumanoidRootPart.CFrame
             end
             _G.rb_shouldSwitch=true
+            if MobileUI.ragebotBtn then
+                MobileUI.ragebotBtn.Text = "Ragebot: ON"
+                MobileUI.ragebotBtn.BackgroundColor3 = Color3.fromRGB(220, 35, 35)
+                MobileUI.ragebotBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            end
         else resetRagebot() end
     end)
 end
