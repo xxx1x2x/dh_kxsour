@@ -446,10 +446,26 @@ local SilentAimSettings = {
     FOV = 150,
 }
 
-local GunHandler, OriginalGetAim
+local GunHandler, OriginalGetAim, OriginalGetCanShoot
 pcall(function()
-    GunHandler = require(ReplicatedStorage.Modules.GunHandler)
-    OriginalGetAim = GunHandler.getAim
+    local modules = ReplicatedStorage:FindFirstChild("Modules") or ReplicatedStorage
+    GunHandler = require(modules:FindFirstChild("GunHandler") or modules:FindFirstChild("Framework"))
+    OriginalGetAim = GunHandler and GunHandler.getAim
+    OriginalGetCanShoot = GunHandler and GunHandler.getCanShoot
+end)
+
+pcall(function()
+    if GunHandler then
+        local origCanShoot = OriginalGetCanShoot or GunHandler.getCanShoot
+        if type(origCanShoot) == "function" then
+            GunHandler.getCanShoot = function(c, ...)
+                if Toggles and Toggles.EnableRapidFire and Toggles.EnableRapidFire.Value then
+                    return true
+                end
+                return origCanShoot(c, ...)
+            end
+        end
+    end
 end)
 
 local function GetFOVOrigin()
@@ -1145,6 +1161,8 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
+
+
 local HitboxGroupBox = Tabs.main:AddRightGroupbox("Hitbox Expander")
 
 HitboxGroupBox:AddToggle('EnableHitboxExpander', {
@@ -1538,7 +1556,7 @@ AutoBuyGroup:AddButton({Text='Buy Armor', Func=function()
     scanShop()
     local a = all_items["High-Medium Armor"] or all_items["Medium Armor"] or all_items["MediumArmor"]
     if a and a.main then
-        local cd = a.main.Parent:FindFirstChildOfClass("ClickDetector") or a.main.Parent:FindFirstChildWhichIsA("ClickDetector")
+        local cd = a.main.Parent:FindFirstChildOfClass("ClickDetector") or a.main.Parent:FindFirstChildWhichIsA("BasePart")
         if cd then
             buyItemWithDesync4(a.main, cd, 1)
         end
@@ -1738,91 +1756,275 @@ end)
 local GunModsGroup = Tabs.main:AddLeftGroupbox('Gun Mods')
 
 GunModsGroup:AddToggle('EnableRapidFire', {Text='Enable Rapid Fire', Default=false})
+GunModsGroup:AddSlider('RapidFireDelay', {Text='Rapid Fire Delay', Default=0.08, Min=0.001, Max=0.5, Rounding=3})
 
-getgenv().config = {enable=false, delay=0.001}
-local rapidUtility = {}
-rapidUtility.get_gun = function()
-    local char = LocalPlayer.Character
-    if not char then return nil end
-    for _, tool in next, char:GetChildren() do
-        if tool:IsA("Tool") then
-            if tool:FindFirstChild("Ammo") or tool:FindFirstChild("GunScript") or tool:FindFirstChild("GunClient") or tool:FindFirstChild("Handle") then
-                return tool
+local State_RF = {
+    rapidFireHooks = {},
+    rapidFireChildConns = {},
+    isHolding = false
+}
+local Refs_RF = {
+    rapidFireLoopRunning = false,
+    rapidFireLoopThread = nil
+}
+
+local function hookToolForRapidFire(tool)
+    if not tool or not tool:IsA("Tool") then return end
+    local getconnections = getconnections or (debug and debug.getconnections)
+    local getinfo = debug.getinfo or (debug and debug.getinfo)
+    local getupvalue = debug.getupvalue or (debug and debug.getupvalue)
+    local setupvalue = debug.setupvalue or (debug and debug.setupvalue)
+
+    local cd = tool:FindFirstChild("Cooldown") or tool:FindFirstChild("FireRate")
+    if cd and cd:IsA("NumberValue") then
+        pcall(function() cd.Value = 0 end)
+    end
+
+    if not getconnections or not getinfo or not getupvalue or not setupvalue then return end
+
+    pcall(function()
+        local conns = getconnections(tool.Activated)
+        if not conns or #conns == 0 then
+            conns = getconnections(tool.Equipped)
+        end
+        if not conns then return end
+
+        for _, conn in ipairs(conns) do
+            if conn and conn.Function then
+                local info = getinfo(conn.Function, "u")
+                if info then
+                    for i = 1, info.nups do
+                        local v = getupvalue(conn.Function, i)
+                        if type(v) == "number" then
+                            table.insert(State_RF.rapidFireHooks, {conn = conn, fn = conn.Function, index = i, original = v})
+                            setupvalue(conn.Function, i, 0)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+local function startRapidFireLoop()
+    if Refs_RF.rapidFireLoopRunning then return end
+    Refs_RF.rapidFireLoopRunning = true
+    Refs_RF.rapidFireLoopThread = task.spawn(function()
+        while Refs_RF.rapidFireLoopRunning do
+            local isPressed = State_RF.isHolding or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+            if isPressed and Toggles.EnableRapidFire.Value then
+                local c = LocalPlayer.Character
+                if c then
+                    local t = c:FindFirstChildOfClass("Tool")
+                    if t then
+                        local a = t:FindFirstChild("Ammo")
+                        if not a or a.Value > 0 then
+                            t:Activate()
+                        end
+                    end
+                end
+            end
+            local delayVal = (Options.RapidFireDelay and Options.RapidFireDelay.Value) or 0.08
+            task.wait(delayVal)
+        end
+    end)
+end
+
+local function stopRapidFireLoop()
+    Refs_RF.rapidFireLoopRunning = false
+    if Refs_RF.rapidFireLoopThread then
+        task.cancel(Refs_RF.rapidFireLoopThread)
+        Refs_RF.rapidFireLoopThread = nil
+    end
+end
+
+local function applyRapidFire()
+    if GunHandler then
+        local origCanShoot = OriginalGetCanShoot or GunHandler.getCanShoot
+        if type(origCanShoot) == "function" then
+            GunHandler.getCanShoot = function(c, ...)
+                if Toggles and Toggles.EnableRapidFire and Toggles.EnableRapidFire.Value then
+                    return true
+                end
+                return origCanShoot(c, ...)
             end
         end
     end
-    return nil
-end
-rapidUtility.rapid = function(tool)
-    if tool and tool.Parent == LocalPlayer.Character then
-        tool:Activate()
+
+    local setupvalue = debug.setupvalue or (debug and debug.setupvalue)
+    for _, hook in ipairs(State_RF.rapidFireHooks) do
+        pcall(function()
+            if setupvalue and hook.fn then
+                setupvalue(hook.fn, hook.index, hook.original)
+            end
+        end)
     end
+    State_RF.rapidFireHooks = {}
+    for _, conn in ipairs(State_RF.rapidFireChildConns) do
+        if conn and conn.Disconnect then pcall(function() conn:Disconnect() end) end
+    end
+    State_RF.rapidFireChildConns = {}
+    stopRapidFireLoop()
+
+    if not Toggles.EnableRapidFire.Value then
+        if GunHandler and OriginalGetCanShoot then
+            GunHandler.getCanShoot = OriginalGetCanShoot
+        end
+        return
+    end
+
+    local c = LocalPlayer.Character
+    local bp = LocalPlayer:FindFirstChild("Backpack")
+    if c then
+        for _, t in ipairs(c:GetChildren()) do hookToolForRapidFire(t) end
+        local conn = c.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then task.wait(0.1); hookToolForRapidFire(child) end
+        end)
+        table.insert(State_RF.rapidFireChildConns, conn)
+    end
+    if bp then
+        for _, t in ipairs(bp:GetChildren()) do hookToolForRapidFire(t) end
+        local conn = bp.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then task.wait(0.1); hookToolForRapidFire(child) end
+        end)
+        table.insert(State_RF.rapidFireChildConns, conn)
+    end
+    startRapidFireLoop()
 end
 
-getgenv().is_firing = false
-
-UserInputService.InputBegan:Connect(function(i, gameProcessed)
-    if gameProcessed then return end
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        local gun = rapidUtility.get_gun()
-        if getgenv().config.enable and gun and not getgenv().is_firing then
-            getgenv().is_firing = true
-            task.spawn(function()
-                while getgenv().is_firing and getgenv().config.enable do
-                    local currentGun = rapidUtility.get_gun()
-                    if currentGun then
-                        rapidUtility.rapid(currentGun)
-                    else
-                        break
-                    end
-                    task.wait(getgenv().config.delay or 0.001)
-                end
-                getgenv().is_firing = false
-            end)
-        end
+UserInputService.InputBegan:Connect(function(input, gp)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        State_RF.isHolding = true
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        getgenv().is_firing = false
+        State_RF.isHolding = false
     end
 end)
 
 Toggles.EnableRapidFire:OnChanged(function()
-    getgenv().config.enable = Toggles.EnableRapidFire.Value
-    if not Toggles.EnableRapidFire.Value then
-        getgenv().is_firing = false
-    end
+    applyRapidFire()
 end)
 
 do
     local spreaddd = {on = false, int = 100}
     local mathranbynig = math.random
-    local spreadman_target = math
+    local orig_math_random = nil
+    local spread_hooked_funcs = {}
+    local spread_conns = {}
 
     pcall(function()
-        setreadonly(spreadman_target, false)
-        spreadman_target.random = newcclosure(function(...)
-            local spreadman_args = {...}
-            local spreadman_result = mathranbynig(...)
-            local is_spread_call = (#spreadman_args == 0) or
-                                   (spreadman_args[1] == -0.05 and spreadman_args[2] == 0.05) or
-                                   (spreadman_args[1] == -0.1) or
-                                   (spreadman_args[1] == -0.05)
-            if not checkcaller() and spreaddd.on and is_spread_call then
-                return spreadman_result * (spreaddd.int / 100)
-            end
-            return spreadman_result
-        end)
-        setreadonly(spreadman_target, true)
+        if type(hookfunction) == "function" then
+            orig_math_random = hookfunction(math.random, newcclosure(function(...)
+                local spreadman_args = {...}
+                local spreadman_result = orig_math_random(...)
+                local is_spread_call = (#spreadman_args == 0) or
+                                       (spreadman_args[1] == -0.05 and spreadman_args[2] == 0.05) or
+                                       (spreadman_args[1] == -0.1 and spreadman_args[2] == 0.1) or
+                                       (spreadman_args[1] == -0.1) or
+                                       (spreadman_args[1] == -0.05)
+                if not checkcaller() and spreaddd.on and is_spread_call then
+                    return spreadman_result * (spreaddd.int / 100)
+                end
+                return spreadman_result
+            end))
+        end
     end)
+
+    local function applyGunSpreadToTool(tool)
+        if not tool or not tool:IsA("Tool") then return end
+        local getconnections = getconnections or (debug and debug.getconnections)
+        if not getconnections then return end
+        pcall(function()
+            local conns = getconnections(tool.Activated)
+            if not conns or #conns == 0 then conns = getconnections(tool.Equipped) end
+            if not conns then return end
+
+            for _, conn in ipairs(conns) do
+                if conn and conn.Function then
+                    local fn = conn.Function
+                    pcall(function()
+                        local env = getfenv(fn)
+                        if env then
+                            env.math = env.math or {}
+                            env.math.random = newcclosure(function(...)
+                                local spreadman_args = {...}
+                                local spreadman_result = mathranbynig(...)
+                                local is_spread_call = (#spreadman_args == 0) or
+                                                       (spreadman_args[1] == -0.05 and spreadman_args[2] == 0.05) or
+                                                       (spreadman_args[1] == -0.1 and spreadman_args[2] == 0.1) or
+                                                       (spreadman_args[1] == -0.1) or
+                                                       (spreadman_args[1] == -0.05)
+                                if spreaddd.on and is_spread_call then
+                                    return spreadman_result * (spreaddd.int / 100)
+                                end
+                                return spreadman_result
+                            end)
+                            table.insert(spread_hooked_funcs, fn)
+                        end
+                    end)
+                end
+            end
+        end)
+    end
+
+    local function refreshGunSpread()
+        for _, conn in ipairs(spread_conns) do
+            if conn and conn.Disconnect then pcall(function() conn:Disconnect() end) end
+        end
+        spread_conns = {}
+
+        if spreaddd.on then
+            local char = LocalPlayer.Character
+            local bp = LocalPlayer:FindFirstChild("Backpack")
+            if char then
+                for _, t in ipairs(char:GetChildren()) do
+                    if t:IsA("Tool") then applyGunSpreadToTool(t) end
+                end
+                local c1 = char.ChildAdded:Connect(function(child)
+                    if child:IsA("Tool") then task.wait(0.1); applyGunSpreadToTool(child) end
+                end)
+                table.insert(spread_conns, c1)
+            end
+            if bp then
+                for _, t in ipairs(bp:GetChildren()) do
+                    if t:IsA("Tool") then applyGunSpreadToTool(t) end
+                end
+                local c2 = bp.ChildAdded:Connect(function(child)
+                    if child:IsA("Tool") then task.wait(0.1); applyGunSpreadToTool(child) end
+                end)
+                table.insert(spread_conns, c2)
+            end
+            local c3 = LocalPlayer.CharacterAdded:Connect(function(c)
+                task.wait(0.5)
+                for _, t in ipairs(c:GetChildren()) do
+                    if t:IsA("Tool") then applyGunSpreadToTool(t) end
+                end
+                local c4 = c.ChildAdded:Connect(function(child)
+                    if child:IsA("Tool") then task.wait(0.1); applyGunSpreadToTool(child) end
+                end)
+                table.insert(spread_conns, c4)
+            end)
+            table.insert(spread_conns, c3)
+        else
+            for _, fn in ipairs(spread_hooked_funcs) do
+                pcall(function()
+                    local env = getfenv(fn)
+                    if env then env.math = nil end
+                end)
+            end
+            spread_hooked_funcs = {}
+        end
+    end
 
     GunModsGroup:AddToggle('EnableGunSpread', {Text = 'Gun Spread', Default = false})
     GunModsGroup:AddSlider('SpreadIntensity', {Text = 'Spread Intensity', Default = 100, Min = 0, Max = 100, Rounding = 1, Compact = false})
 
     Toggles.EnableGunSpread:OnChanged(function()
         spreaddd.on = Toggles.EnableGunSpread.Value
+        refreshGunSpread()
     end)
 
     Options.SpreadIntensity:OnChanged(function()
@@ -9957,93 +10159,7 @@ do
     end)
 end
 
-local removeFireCooldownEnabled = false
-local rfc_old_tools = {}
-local rfc_old_upvalues = {}
-local rfc_equipped_conn = nil
-local rfc_char_conn = nil
 
-local function apply_firerate_bypass(tool)
-    task.wait()
-    if not removeFireCooldownEnabled then return end
-    local name = tool and tool:IsA("Tool") and tool.Name
-    if tool and name and not rfc_old_tools[name] then
-        local getgc = getgc or (debug and debug.getgc)
-        local getinfo = debug.getinfo or getinfo
-        local getupvalues = debug.getupvalues or getupvalues
-        local setupvalue = debug.setupvalue or setupvalue
-        if getgc and getinfo and getupvalues and setupvalue then
-            local gc = getgc()
-            for i = 1, #gc do
-                local obj = gc[i]
-                if type(obj) == "function" then
-                    local info = getinfo(obj)
-                    local src = info and info.source
-                    if src and string.find(src, "GunClient") and string.find(src, name) then
-                        for idx, upvalue in pairs(getupvalues(obj)) do
-                            if type(upvalue) == "number" and upvalue < 10 then
-                                rfc_old_upvalues[obj] = upvalue
-                                setupvalue(obj, idx, 0)
-                            end
-                        end
-                    end
-                end
-            end
-            rfc_old_tools[name] = 1
-        end
-    end
-end
-
-local function toggleRemoveFireCooldown(state)
-    removeFireCooldownEnabled = state
-    if rfc_equipped_conn then rfc_equipped_conn:Disconnect() rfc_equipped_conn = nil end
-    if rfc_char_conn then rfc_char_conn:Disconnect() rfc_char_conn = nil end
-
-    if state then
-        rfc_old_upvalues = {}
-        rfc_old_tools = {}
-        local char = LocalPlayer.Character
-        if char then
-            for _, t in ipairs(char:GetChildren()) do
-                if t:IsA("Tool") then task.spawn(apply_firerate_bypass, t) end
-            end
-            rfc_equipped_conn = char.ChildAdded:Connect(function(child)
-                if child:IsA("Tool") then task.spawn(apply_firerate_bypass, child) end
-            end)
-        end
-        rfc_char_conn = LocalPlayer.CharacterAdded:Connect(function(c)
-            rfc_old_tools = {}
-            rfc_old_upvalues = {}
-            rfc_equipped_conn = c.ChildAdded:Connect(function(child)
-                if child:IsA("Tool") then task.spawn(apply_firerate_bypass, child) end
-            end)
-        end)
-    else
-        local getgc = getgc or (debug and debug.getgc)
-        local getinfo = debug.getinfo or getinfo
-        local getupvalues = debug.getupvalues or getupvalues
-        local setupvalue = debug.setupvalue or setupvalue
-        if rfc_old_upvalues and getgc and getinfo and setupvalue then
-            local gc = getgc()
-            for i = 1, #gc do
-                local obj = gc[i]
-                if type(obj) == "function" then
-                    local info = getinfo(obj)
-                    if info and info.source and string.find(info.source, "GunClient") then
-                        local orig = rfc_old_upvalues[obj]
-                        if orig then
-                            for idx, _ in pairs(getupvalues(obj)) do
-                                setupvalue(obj, idx, orig)
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        rfc_old_tools = {}
-        rfc_old_upvalues = {}
-    end
-end
 
 local defaultMaxZoom = LocalPlayer.CameraMaxZoomDistance or 128
 local function toggleUnlockMaxZoom(state)
@@ -10107,13 +10223,7 @@ MiscGroup:AddToggle('AntiCollision', {
     end
 })
 
-MiscGroup:AddToggle('RemoveFireCooldown', {
-    Text = 'Remove Fire Cooldown',
-    Default = false,
-    Callback = function(v)
-        toggleRemoveFireCooldown(v)
-    end
-})
+
 
 MiscGroup:AddToggle('UnlockMaxZoom', {
     Text = 'Unlock Max Zoom Distance',
