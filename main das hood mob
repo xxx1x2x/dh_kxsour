@@ -17,7 +17,7 @@ local Options = Library.Options
 local Toggles = Library.Toggles
 
 local Window = Library:CreateWindow({
-    Title = 'KraviX | Da Hood',
+    Title = 'KraviX | Das Hood',
     Center = true,
     AutoShow = true,
     TabPadding = 8,
