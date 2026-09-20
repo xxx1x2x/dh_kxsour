@@ -1121,8 +1121,13 @@ local function applyToHRP(HRP)
         }
     end
 
-    HRP.Size = Vector3.new(HitboxSettings.Size, HitboxSettings.Size, HitboxSettings.Size)
-    HRP.CanCollide = false
+    local targetSize = Vector3.new(HitboxSettings.Size, HitboxSettings.Size, HitboxSettings.Size)
+    if HRP.Size ~= targetSize then
+        HRP.Size = targetSize
+    end
+    if HRP.CanCollide then
+        HRP.CanCollide = false
+    end
 
     if not HitboxVisuals[HRP] or not HitboxVisuals[HRP].Parent then
         local sphere = Instance.new("Part")
@@ -1130,17 +1135,24 @@ local function applyToHRP(HRP)
         sphere.Material = Enum.Material.ForceField
         sphere.Color = HitboxSettings.Color
         sphere.Transparency = HitboxSettings.Transparency
-        sphere.Size = Vector3.new(HitboxSettings.Size, HitboxSettings.Size, HitboxSettings.Size)
+        sphere.Size = targetSize
+        sphere.CFrame = HRP.CFrame
         sphere.Anchored = false
         sphere.CanCollide = false
         sphere.Massless = true
         sphere.Parent = workspace
 
+        local weld = Instance.new("WeldConstraint")
+        weld.Part0 = sphere
+        weld.Part1 = HRP
+        weld.Parent = sphere
+
         HitboxVisuals[HRP] = sphere
     else
-        HitboxVisuals[HRP].Color = HitboxSettings.Color
-        HitboxVisuals[HRP].Transparency = HitboxSettings.Transparency
-        HitboxVisuals[HRP].Size = Vector3.new(HitboxSettings.Size, HitboxSettings.Size, HitboxSettings.Size)
+        local vis = HitboxVisuals[HRP]
+        if vis.Color ~= HitboxSettings.Color then vis.Color = HitboxSettings.Color end
+        if vis.Transparency ~= HitboxSettings.Transparency then vis.Transparency = HitboxSettings.Transparency end
+        if vis.Size ~= targetSize then vis.Size = targetSize end
     end
 end
 
@@ -1180,10 +1192,6 @@ RunService.RenderStepped:Connect(function()
             if HRP then
                 if not hbIsPlayerKO(Player) then
                     applyToHRP(HRP)
-                    local visual = HitboxVisuals[HRP]
-                    if visual then
-                        visual.CFrame = HRP.CFrame
-                    end
                 else
                     revertHRP(HRP)
                 end
@@ -2574,27 +2582,11 @@ local esp = (function()
     end
 
     local function customBounds(char)
-        local minB = Vector3.new(math.huge,math.huge,math.huge)
-        local maxB = Vector3.new(-math.huge,-math.huge,-math.huge)
-        local minWidth = 2.5
-        for _,part in ipairs(char:GetChildren()) do
-            if part:IsA('BasePart') and part.Name ~= "HitboxVisualizer" then
-                local cf, sz = part.CFrame, part.Size
-                if part.Name == "HumanoidRootPart" then
-                    sz = Vector3.new(2, 2, 1)
-                end
-                for _,v in ipairs(vertices) do
-                    local w = cf:PointToWorldSpace(Vector3.new(v[1]*sz.X, (v[2]+0.2)*(sz.Y+0.2), v[3]*sz.Z))
-                    minB = Vector3.new(math.min(minB.X,w.X),math.min(minB.Y,w.Y),math.min(minB.Z,w.Z))
-                    maxB = Vector3.new(math.max(maxB.X,w.X),math.max(maxB.Y,w.Y),math.max(maxB.Z,w.Z))
-                end
-            end
-        end
-        if minB.X == math.huge then return nil end
-        local size = maxB - minB
-        size = Vector3.new(math.max(size.X, minWidth), size.Y, size.Z)
-        local center = (minB + maxB) / 2
-        return CFrame.new(center), size, center
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return nil end
+        local size = Vector3.new(4, 5.5, 2)
+        local center = hrp.Position
+        return hrp.CFrame, size, center
     end
 
     local function w2s(pos)
@@ -4636,11 +4628,6 @@ local function applyLightingSettings()
     end
 end
 
-RunService.RenderStepped:Connect(function()
-    if LightingModifications then
-        applyLightingSettings()
-    end
-end)
 
 WorldGroup:AddToggle('lightingmodifications', {
     Text = 'Enable Lighting',
@@ -11676,7 +11663,6 @@ task.spawn(function()
                             task.wait(0.35)
                             pcall(function() ReplicatedStorage.MainEvent:FireServer("Grabbing", false) end)
                             task.wait(0.35)
-                            Library:Notify("Brought KO target to your position!", 3)
                         end
 
                         if endChar then
